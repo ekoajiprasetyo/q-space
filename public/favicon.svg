@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+    <defs>
+        <linearGradient id="grad" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#2DD4BF"/> <!-- Teal-400 -->
+            <stop offset="1" stop-color="#0891B2"/> <!-- Cyan-600 -->
+        </linearGradient>
+    </defs>
+    <!-- Center Core -->
+    <circle cx="50" cy="50" r="18" fill="url(#grad)" />
+    
+    <!-- Orbits -->
+    <ellipse cx="50" cy="50" rx="38" ry="12" stroke="url(#grad)" stroke-width="6" transform="rotate(45 50 50)" stroke-opacity="0.6"/>
+    <ellipse cx="50" cy="50" rx="38" ry="12" stroke="url(#grad)" stroke-width="6" transform="rotate(-45 50 50)" stroke-opacity="0.6"/>
+    
+    <!-- Satellite Dots -->
+    <circle cx="77" cy="23" r="6" fill="#F472B6" /> <!-- Pink/Purple (Paths) -->
+    <circle cx="23" cy="77" r="6" fill="#60A5FA" /> <!-- Blue (Files) -->
+    <circle cx="85" cy="50" r="6" fill="#34D399" transform="rotate(20 50 50)"/> <!-- Green (Codes) -->
+</svg>
