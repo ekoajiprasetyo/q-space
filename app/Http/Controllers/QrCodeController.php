@@ -11,7 +11,16 @@ class QrCodeController extends Controller
 {
     public function index()
     {
-        return view('codes.index');
+        $dynamicQrs = ShortLink::where('user_id', Auth::id())
+            ->where('name', 'like', 'QR Dynamic -%')
+            ->latest()
+            ->get();
+
+        $textQrs = \App\Models\QrText::where('user_id', Auth::id())
+            ->latest()
+            ->get();
+
+        return view('codes.index', compact('dynamicQrs', 'textQrs'));
     }
 
     public function storeDynamic(Request $request)

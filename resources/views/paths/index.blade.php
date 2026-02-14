@@ -157,19 +157,19 @@
                                                     /
                                                 </div>
                                                 <div class="flex flex-col">
-                                                    <a href="{{ route('short_link.redirect', $link->short_code) }}" target="_blank" class="font-bold text-purple-700 hover:text-purple-900 hover:underline text-base">
+                                                    <a href="https://s.q-link.my.id/{{ $link->short_code }}" target="_blank" class="font-bold text-purple-700 hover:text-purple-900 hover:underline text-base">
                                                         {{ $link->short_code }}
                                                     </a>
-                                                    <span class="text-xs text-slate-400 font-medium">{{ request()->getHost() }}</span>
+                                                    <span class="text-xs text-slate-400 font-medium">s.q-link.my.id</span>
                                                 </div>
-                                                <button onclick="navigator.clipboard.writeText('{{ route('short_link.redirect', $link->short_code) }}'); this.innerHTML = '<svg class=\'w-4 h-4\' fill=\'none\' stroke=\'currentColor\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M5 13l4 4L19 7\'></path></svg>'; setTimeout(() => this.innerHTML = '<svg class=\'w-4 h-4\' fill=\'none\' stroke=\'currentColor\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z\'></path></svg>', 2000)" 
+                                                <button onclick="navigator.clipboard.writeText('https://s.q-link.my.id/{{ $link->short_code }}'); this.innerHTML = '<svg class=\'w-4 h-4\' fill=\'none\' stroke=\'currentColor\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M5 13l4 4L19 7\'></path></svg>'; setTimeout(() => this.innerHTML = '<svg class=\'w-4 h-4\' fill=\'none\' stroke=\'currentColor\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z\'></path></svg>', 2000)" 
                                                     class="p-2 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-100 transition-all" title="Copy">
                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                                 </button>
                                             </div>
                                         </td>
                                         <td class="px-6 py-5">
-                                            <div class="flex items-center gap-2 max-w-lg">
+                                            <div class="flex items-center gap-2 max-w-[250px]">
                                                 <img src="https://www.google.com/s2/favicons?domain={{ parse_url($link->original_url, PHP_URL_HOST) }}&sz=32" alt="" class="w-4 h-4 opacity-60 flex-shrink-0">
                                                 <a href="{{ $link->original_url }}" target="_blank" class="text-slate-500 font-medium truncate hover:text-blue-600 transition-colors block w-full" title="{{ $link->original_url }}">
                                                     {{ $link->original_url }}

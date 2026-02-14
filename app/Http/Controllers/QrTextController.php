@@ -47,4 +47,20 @@ class QrTextController extends Controller
 
         return view('codes.text-view', compact('qrText'));
     }
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    public function destroy($id)
+    {
+        $qrText = QrText::findOrFail($id);
+
+        if ($qrText->user_id != Auth::id()) {
+            abort(403);
+        }
+
+        $qrText->delete();
+
+        return back()->with('success', 'QR Code berhasil dihapus.');
+    }
 }
