@@ -295,17 +295,30 @@
                             $item->display_name = $item->title ?? Str::limit($item->content, 20);
                             $item->delete_route = route('qr-text.destroy', $item->id);
                             return $item;
-                        }))->sortByDesc('created_at');
+                        }))->sortByDesc('created_at')->values();
                     @endphp
 
-                    <div class="bg-white/80 backdrop-blur-xl rounded-[2.5rem] border border-white/50 shadow-sm overflow-hidden">
-                        <div class="p-6 border-b border-slate-100 flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div class="bg-white/80 backdrop-blur-xl rounded-[2.5rem] border border-white/50 shadow-sm overflow-hidden"
+                        x-data="{
+                            perPage: 5,
+                            currentPage: 1,
+                            get totalPages() { return Math.ceil({{ $history->count() }} / this.perPage); },
+                            get start() { return (this.currentPage - 1) * this.perPage; },
+                            get end() { return this.currentPage * this.perPage; },
+                            isVisible(index) { return index >= this.start && index < this.end; },
+                            prev() { if (this.currentPage > 1) this.currentPage--; },
+                            next() { if (this.currentPage < this.totalPages) this.currentPage++; }
+                        }">
+                        <div class="p-6 border-b border-slate-100 flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                </div>
+                                <h3 class="text-lg font-bold text-slate-800">Riwayat</h3>
                             </div>
-                            <h3 class="text-lg font-bold text-slate-800">
-                                Riwayat
-                            </h3>
+                            @if($history->count() > 0)
+                            <span class="text-xs font-semibold text-slate-400">{{ $history->count() }} item</span>
+                            @endif
                         </div>
                         
                         @if($history->isEmpty())
@@ -323,8 +336,8 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-100">
-                                        @foreach($history as $item)
-                                            <tr class="group hover:bg-slate-50/50 transition-colors">
+                                        @foreach($history as $index => $item)
+                                            <tr x-show="isVisible({{ $index }})" class="group hover:bg-slate-50/50 transition-colors">
                                                 <td class="px-5 py-3">
                                                     <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold {{ $item->type_label === 'Dynamic' ? 'bg-teal-50 text-teal-600' : 'bg-slate-100 text-slate-600' }}">
                                                         {{ $item->type_label === 'Dynamic' ? 'LNK' : 'TXT' }}
@@ -353,6 +366,23 @@
                                         @endforeach
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <!-- Pagination Controls -->
+                            <div x-show="totalPages > 1" class="px-5 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                                <span class="text-xs font-semibold text-slate-400">
+                                    Halaman <span x-text="currentPage" class="text-slate-700"></span> dari <span x-text="totalPages" class="text-slate-700"></span>
+                                </span>
+                                <div class="flex items-center gap-2">
+                                    <button @click="prev()" :disabled="currentPage === 1"
+                                        class="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                                    </button>
+                                    <button @click="next()" :disabled="currentPage === totalPages"
+                                        class="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                         @endif
                     </div>

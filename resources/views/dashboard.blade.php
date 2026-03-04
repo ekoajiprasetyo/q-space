@@ -2,7 +2,7 @@
     <x-slot name="title">Ringkasan</x-slot>
 
     <!-- Main Container with Gradient Background -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         
         <!-- Header Section -->
         <div class="relative items-center justify-between mb-12 isolate">
@@ -138,7 +138,108 @@
             </div>
 
         </div>
+
+        <!-- Statistics Section -->
+        <div class="mt-10">
+
+            <!-- Section Header -->
+            <div class="flex items-center gap-4 mb-6">
+                <h2 class="text-xl font-extrabold text-slate-800 tracking-tight whitespace-nowrap">Statistik</h2>
+                <div class="flex-1 h-px bg-slate-200"></div>
+            </div>
+
+            <!-- Stat Summary Row -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+
+                <!-- Total Submissions -->
+                <div class="bg-white rounded-[2rem] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 flex items-center gap-6">
+                    <div class="w-16 h-16 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3 3m0 0l-3-3m3 3V8"></path></svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-500 mb-2">Total Kiriman Siswa</p>
+                        <p class="text-5xl font-extrabold text-slate-900 leading-none">{{ $totalSubmissions }}</p>
+                    </div>
+                </div>
+
+                <!-- Total Link Visits -->
+                <div class="bg-white rounded-[2rem] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 flex items-center gap-6">
+                    <div class="w-16 h-16 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-500 mb-2">Total Klik Tautan</p>
+                        <p class="text-5xl font-extrabold text-slate-900 leading-none">{{ number_format($totalVisits) }}</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Activity Row -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- Recent Submissions -->
+                <div class="bg-white rounded-[2rem] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+                    <div class="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
+                        <h3 class="font-bold text-slate-800 text-base">Kiriman Terbaru</h3>
+                        <a href="{{ route('files.index') }}" class="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">Lihat Semua →</a>
+                    </div>
+                    <div class="divide-y divide-slate-100">
+                        @forelse($recentSubmissions as $submission)
+                            <div class="px-8 py-5 flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
+                                    {{ strtoupper(substr($submission->submitter_name, 0, 1)) }}
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-semibold text-sm text-slate-800 truncate">{{ $submission->submitter_name }}</p>
+                                    <p class="text-xs text-slate-400 truncate mt-0.5">{{ $submission->fileRequest->title ?? '—' }}</p>
+                                </div>
+                                <span class="text-xs text-slate-400 whitespace-nowrap shrink-0 ml-2">
+                                    {{ $submission->submitted_at?->diffForHumans() ?? $submission->created_at->diffForHumans() }}
+                                </span>
+                            </div>
+                        @empty
+                            <div class="px-8 py-12 text-center text-sm text-slate-400">
+                                Belum ada kiriman masuk.
+                            </div>
+                        @endforelse
+                    </div>
+                </div>
+
+                <!-- Top Links -->
+                <div class="bg-white rounded-[2rem] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+                    <div class="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
+                        <h3 class="font-bold text-slate-800 text-base">Tautan Terpopuler</h3>
+                        <a href="{{ route('paths.index') }}" class="text-xs font-bold text-purple-600 hover:text-purple-800 transition-colors">Lihat Semua →</a>
+                    </div>
+                    <div class="divide-y divide-slate-100">
+                        @forelse($topLinks as $link)
+                            <div class="px-8 py-5 flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-semibold text-sm text-slate-800 truncate">{{ $link->name ?: $link->short_code }}</p>
+                                    <p class="text-xs text-slate-400 truncate mt-0.5">s.q-link.my.id/{{ $link->short_code }}</p>
+                                </div>
+                                <span class="text-xs font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full shrink-0 whitespace-nowrap ml-2">
+                                    {{ number_format($link->visits) }} klik
+                                </span>
+                            </div>
+                        @empty
+                            <div class="px-8 py-12 text-center text-sm text-slate-400">
+                                Belum ada tautan yang diklik.
+                            </div>
+                        @endforelse
+                    </div>
+                </div>
+
+            </div>
         </div>
+
+        <!-- Bottom Spacer -->
+        <div class="h-16 md:h-24"></div>
+
     </div>
     
     <style>
