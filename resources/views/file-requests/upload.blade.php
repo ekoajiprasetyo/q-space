@@ -78,15 +78,6 @@
                              <!-- Constraints -->
                              <div class="flex gap-4">
                                 <div class="flex-1 flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
-                                    <div class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-                                    </div>
-                                    <div>
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Ukuran Maks</p>
-                                        <p class="font-bold text-sm text-white">500 MB</p>
-                                    </div>
-                                </div>
-                                <div class="flex-1 flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
                                     <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                     </div>
@@ -194,7 +185,7 @@
                     @else
                         <!-- Flash Messages -->
                         @if(session('error'))
-                            <div class="mb-8 p-4 rounded-3xl bg-red-50 border border-red-100 text-red-700 flex items-center gap-4 animate-fade-in-down shadow-sm">
+                            <div class="mb-8 p-4 rounded-3xl bg-red-50 border border-red-100 text-red-700 flex items-center gap-4 shadow-sm">
                                 <div class="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center shrink-0 text-red-600">
                                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                 </div>
@@ -205,13 +196,38 @@
                             </div>
                         @endif
 
-                        <form action="{{ route('file-requests.upload.store', $fileRequest->slug) }}" method="POST" enctype="multipart/form-data" class="h-full flex flex-col space-y-8" 
+                        {{-- Validation Errors ($errors bag dari Laravel) --}}
+                        @if($errors->any())
+                            <div class="mb-8 p-4 rounded-3xl bg-red-50 border border-red-100 text-red-700 shadow-sm">
+                                <div class="flex items-center gap-3 mb-3">
+                                    <div class="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center shrink-0 text-red-600">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                    </div>
+                                    <p class="font-bold text-lg">Formulir Tidak Lengkap</p>
+                                </div>
+                                <ul class="list-disc list-inside text-sm space-y-1 opacity-90 pl-1">
+                                    @foreach($errors->all() as $error)
+                                        <li>{{ $error }}</li>
+                                    @endforeach
+                                </ul>
+                                @if($errors->has('files') || $errors->has('files.*'))
+                                    <p class="text-xs mt-3 font-medium text-red-600 bg-red-100 rounded-2xl px-3 py-2">
+                                        💡 Tip: Pastikan file sudah dipilih sebelum klik Kirim. Jika file terlalu besar, coba kompres terlebih dahulu.
+                                    </p>
+                                @endif
+                            </div>
+                        @endif
+
+                        <form id="upload-form" action="{{ route('file-requests.upload.store', $fileRequest->slug) }}" method="POST" enctype="multipart/form-data" class="h-full flex flex-col space-y-8" 
                             x-data="{ 
                                 isUploading: false, 
                                 dragging: false,
                                 files: [], 
                                 maxFiles: {{ $fileRequest->max_files }},
                                 notifications: [],
+                                uploadProgress: 0,
+                                uploadStatusText: 'Mempersiapkan upload...',
+                                _progressTimer: null,
                                 
                                 addNotification(message, type = 'error') {
                                     const id = Date.now();
@@ -244,21 +260,17 @@
                                     const currentFiles = this.files;
                                     const allFiles = [...currentFiles, ...newFiles];
                                     
-                                    // Deduplicate using a Map
                                     const uniqueMap = new Map();
                                     allFiles.forEach(f => {
                                         const key = f.name + '|' + f.size;
-                                        if (!uniqueMap.has(key)) {
-                                            uniqueMap.set(key, f);
-                                        }
+                                        if (!uniqueMap.has(key)) uniqueMap.set(key, f);
                                     });
                                     
                                     const finalFiles = Array.from(uniqueMap.values());
 
                                     if (finalFiles.length > this.maxFiles) {
                                         this.addNotification(`Maksimal ${this.maxFiles} file yang diperbolehkan.`, 'error');
-                                        // Revert input to known valid state (currentFiles)
-                                        this.updateInputFiles(currentFiles); 
+                                        this.updateInputFiles(currentFiles);
                                         return;
                                     }
 
@@ -269,9 +281,43 @@
                                     const currentFiles = this.files;
                                     const newFiles = currentFiles.filter((_, i) => i !== index);
                                     this.updateInputFiles(newFiles);
+                                },
+
+                                startSimulatedProgress() {
+                                    // Hitung total ukuran file untuk estimasi durasi
+                                    const totalBytes = this.files.reduce((sum, f) => sum + f.size, 0);
+                                    const totalMB = totalBytes / 1024 / 1024;
+                                    const totalFiles = this.files.length;
+
+                                    this.uploadProgress = 0;
+                                    this.uploadStatusText = `Mempersiapkan ${totalFiles} file (${totalMB.toFixed(1)} MB)...`;
+
+                                    const self = this;
+                                    // Progress naik cepat 0→30% (fase upload ke server)
+                                    // lalu lambat 30→88% (fase server proses ke Drive)
+                                    // lalu berhenti di 88% menunggu redirect dari server
+                                    let pct = 0;
+
+                                    function tick() {
+                                        if (pct < 30) {
+                                            pct += 2.5;
+                                            self.uploadStatusText = `Mengupload ke server... ${pct.toFixed(0)}%`;
+                                        } else if (pct < 88) {
+                                            pct += 0.6;
+                                            self.uploadStatusText = `Menyimpan ke Google Drive...`;
+                                        } else {
+                                            // Berhenti di 88, tunggu server selesai
+                                            self.uploadStatusText = 'Menyelesaikan proses upload...';
+                                            return;
+                                        }
+                                        self.uploadProgress = Math.min(Math.round(pct), 88);
+                                        self._progressTimer = setTimeout(tick, 120);
+                                    }
+
+                                    tick();
                                 }
                             }" 
-                            @submit="isUploading = true">
+                            @submit="isUploading = true; startSimulatedProgress();">
                             @csrf
                             
                             <!-- Toast Notifications -->
@@ -310,10 +356,11 @@
                                 <div class="group">
                                     <label for="name" class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 group-focus-within:text-blue-600 transition-colors">Nama Lengkap</label>
                                     <div class="relative">
-                                        <input 
+                                         <input 
                                             id="name" 
                                             type="text" 
                                             name="name" 
+                                            value="{{ old('name') }}"
                                             required 
                                             placeholder="Nama Anda" 
                                             class="block w-full border-0 border-b border-slate-200 bg-transparent py-3 px-0 text-lg font-medium text-slate-800 focus:border-slate-300 focus:ring-0 focus:outline-none placeholder-slate-300 transition-colors font-sans"
@@ -328,10 +375,11 @@
                                 <div class="group">
                                     <label for="class_name" class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 group-focus-within:text-blue-600 transition-colors">Kelas</label>
                                     <div class="relative">
-                                        <input 
+                                         <input 
                                             id="class_name" 
                                             type="text" 
                                             name="class_name" 
+                                            value="{{ old('class_name') }}"
                                             required 
                                             placeholder="Contoh: XII-1" 
                                             class="block w-full border-0 border-b border-slate-200 bg-transparent py-3 px-0 text-lg font-medium text-slate-800 focus:border-slate-300 focus:ring-0 focus:outline-none placeholder-slate-300 transition-colors font-sans"
@@ -347,13 +395,13 @@
                             <div class="group">
                                 <label for="notes" class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 group-focus-within:text-blue-600 transition-colors">Catatan <span class="text-slate-300 font-normal normal-case ml-1">(Opsional)</span></label>
                                 <div class="relative bg-slate-50 rounded-3xl p-4 transition-all focus-within:ring-0 focus-within:bg-white border-2 border-transparent focus-within:border-slate-200">
-                                    <textarea 
+                                     <textarea 
                                         id="notes" 
                                         name="notes" 
                                         rows="3" 
                                         class="block w-full border-0 bg-transparent p-0 text-slate-800 placeholder-slate-400 focus:ring-0 resize-none font-medium leading-relaxed"
                                         placeholder="Tuliskan pesan tambahan untuk guru..."
-                                    ></textarea>
+                                    >{{ old('notes') }}</textarea>
                                 </div>
                             </div>
 
@@ -458,6 +506,80 @@
                                     </div>
                                 </button>
                             </div>
+
+                            <!-- Full-Screen Upload Progress Overlay -->
+                            <template x-teleport="body">
+                                <div x-show="isUploading"
+                                    x-transition:enter="transition ease-out duration-300"
+                                    x-transition:enter-start="opacity-0"
+                                    x-transition:enter-end="opacity-100"
+                                    x-transition:leave="transition ease-in duration-200"
+                                    x-transition:leave-start="opacity-100"
+                                    x-transition:leave-end="opacity-0"
+                                    class="fixed inset-0 z-[9999] flex items-center justify-center p-6"
+                                    style="display: none;">
+                                    <!-- Backdrop blur -->
+                                    <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-md"></div>
+
+                                    <!-- Card -->
+                                    <div class="relative z-10 w-full max-w-md bg-white rounded-[2rem] shadow-2xl p-10 flex flex-col items-center text-center">
+                                        <!-- Animated Icon -->
+                                        <div class="relative w-24 h-24 mb-8">
+                                            <!-- Outer ring -->
+                                            <svg class="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
+                                                <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" stroke-width="8"/>
+                                                <circle cx="50" cy="50" r="42" fill="none" stroke="url(#progressGradient)" stroke-width="8"
+                                                    stroke-linecap="round"
+                                                    :stroke-dasharray="`${2 * Math.PI * 42}`"
+                                                    :stroke-dashoffset="`${2 * Math.PI * 42 * (1 - uploadProgress / 100)}`"
+                                                    style="transition: stroke-dashoffset 0.4s ease;"
+                                                />
+                                                <defs>
+                                                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                        <stop offset="0%" stop-color="#3b82f6"/>
+                                                        <stop offset="100%" stop-color="#6366f1"/>
+                                                    </linearGradient>
+                                                </defs>
+                                            </svg>
+                                            <!-- Inner icon -->
+                                            <div class="absolute inset-0 flex items-center justify-center">
+                                                <template x-if="uploadProgress < 100">
+                                                    <svg class="w-9 h-9 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                                                    </svg>
+                                                </template>
+                                                <template x-if="uploadProgress >= 100">
+                                                    <svg class="w-9 h-9 text-indigo-500 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                                    </svg>
+                                                </template>
+                                            </div>
+                                        </div>
+
+                                        <!-- Percentage -->
+                                        <div class="mb-2">
+                                            <span class="text-5xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent" x-text="uploadProgress + '%'"></span>
+                                        </div>
+
+                                        <!-- Status Text -->
+                                        <p class="text-slate-500 font-medium text-sm mb-8 min-h-[40px]" x-text="uploadStatusText"></p>
+
+                                        <!-- Progress Bar -->
+                                        <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                                            <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 ease-out relative overflow-hidden"
+                                                :style="'width: ' + uploadProgress + '%'">
+                                                <!-- Shimmer effect -->
+                                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
+                                            </div>
+                                        </div>
+
+                                        <!-- File counter -->
+                                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mt-4">
+                                            <span x-text="files.length"></span> file sedang diupload ke Google Drive
+                                        </p>
+                                    </div>
+                                </div>
+                            </template>
                         </form>
                     @endif
                 </div>

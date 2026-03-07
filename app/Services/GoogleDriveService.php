@@ -67,11 +67,18 @@ class GoogleDriveService
 
     public function createFolder(string $name, ?string $parentId = null): string
     {
-        $fileMetadata = new Drive\DriveFile([
+        $metadata = [
             'name' => $name,
             'mimeType' => 'application/vnd.google-apps.folder',
-            'parents' => $parentId ? [$parentId] : [],
-        ]);
+        ];
+
+        // Google Drive API v3 tidak menerima 'parents' kosong ([]).
+        // Hanya sertakan jika parentId ada.
+        if ($parentId) {
+            $metadata['parents'] = [$parentId];
+        }
+
+        $fileMetadata = new Drive\DriveFile($metadata);
 
         $folder = $this->driveService->files->create($fileMetadata, ['fields' => 'id']);
         return $folder->id;
@@ -80,27 +87,62 @@ class GoogleDriveService
     public function uploadFile($file, string $folderId, ?string $customName = null): array
     {
         $fileMetadata = new Drive\DriveFile([
-            'name' => $customName ?? $file->getClientOriginalName(),
+            'name'    => $customName ?? $file->getClientOriginalName(),
             'parents' => [$folderId],
         ]);
 
-        $content = file_get_contents($file->getRealPath());
+        $filePath = $file->getRealPath();
+        $fileSize = $file->getSize();
+        $mimeType = $file->getMimeType() ?: 'application/octet-stream';
 
-        $uploadedFile = $this->driveService->files->create($fileMetadata, [
-            'data' => $content,
-            'mimeType' => $file->getMimeType(),
-            'uploadType' => 'multipart',
-            'fields' => 'id, name, size, mimeType, webViewLink, webContentLink',
+        // Gunakan resumable/chunked upload (streaming) — file tidak dimuat ke RAM sekaligus.
+        // Ini memungkinkan upload file besar tanpa membebani memory hosting.
+        $this->driveService->getClient()->setDefer(true);
+
+        $request = $this->driveService->files->create($fileMetadata, [
+            'fields' => 'id, name, size, mimeType, webViewLink',
         ]);
 
+        $chunkSize = 5 * 1024 * 1024; // 5 MB per chunk
+        $media = new \Google\Http\MediaFileUpload(
+            $this->driveService->getClient(),
+            $request,
+            $mimeType,
+            null,
+            true,        // resumable = true
+            $chunkSize
+        );
+        $media->setFileSize($fileSize);
+
+        // Stream file per chunk — RAM hanya terpakai 5MB setiap saat
+        $uploadedFile = false;
+        $handle = fopen($filePath, 'rb');
+
+        while (!$uploadedFile && !feof($handle)) {
+            $chunk       = fread($handle, $chunkSize);
+            $uploadedFile = $media->nextChunk($chunk);
+        }
+
+        fclose($handle);
+
+        // Hapus file temp dari disk setelah berhasil diupload ke Google Drive
+        // agar file tidak menumpuk di folder temporary PHP/sistem
+        if (file_exists($filePath)) {
+            @unlink($filePath);
+        }
+
+        // Kembalikan ke mode normal (non-deferred)
+        $this->driveService->getClient()->setDefer(false);
+
         return [
-            'id' => $uploadedFile->id,
-            'name' => $uploadedFile->name,
-            'size' => $uploadedFile->size,
+            'id'       => $uploadedFile->id,
+            'name'     => $uploadedFile->name,
+            'size'     => $fileSize,
             'mimeType' => $uploadedFile->mimeType,
-            'url' => $uploadedFile->webViewLink,
+            'url'      => $uploadedFile->webViewLink,
         ];
     }
+
     public function deleteFile(string $fileId): void
     {
         $this->driveService->files->delete($fileId);

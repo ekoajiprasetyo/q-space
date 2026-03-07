@@ -164,10 +164,8 @@ class FileRequestController extends Controller
             return back()->with('error', 'Data siswa tidak ditemukan.');
         }
 
-        // Get Token
-        $token = UserGoogleToken::where('user_id', Auth::id())
-            ->where('expires_at', '>', now())
-            ->first();
+        // Get Token — tidak filter expires_at agar bisa auto-refresh
+        $token = UserGoogleToken::where('user_id', Auth::id())->first();
 
         // Initialize Drive Service if we have token
         if ($token) {
@@ -177,22 +175,48 @@ class FileRequestController extends Controller
         $deletedCount = 0;
         foreach ($submissions as $submission) {
             try {
-                // Delete from Drive if ID exists
+                // Delete individual file from Drive if ID exists
                 if ($token && $submission->google_drive_file_id) {
                     $this->googleDriveService->deleteFile($submission->google_drive_file_id);
                 }
             } catch (\Exception $e) {
                 // Continue deleting DB record even if Drive delete fails (orphaned files)
-                // Or log it? For now just silent fail on Drive part to ensure DB cleanup
             }
             
             $submission->delete();
             $deletedCount++;
         }
 
-        // Optional: Try to find and delete the student folder if it's empty? 
-        // Logic for folder name reconstruction is tricky without exact naming convention storage.
-        // We skip folder deletion for now to be safe, files are gone so quota is freed.
+        // Rekonstruksi nama folder siswa dan hapus dari Google Drive
+        // Format nama folder: {class_name}_{name} — diambil dari submitter_name yang formatnya "Nama (Kelas)"
+        if ($token && $fileRequest->google_drive_folder_id) {
+            try {
+                // submitter_name disimpan dalam format: "Nama (Kelas)"
+                // Rekonstruksi folder name: "Kelas_Nama" (tanpa karakter khusus)
+                $rawName = $request->submitter_name;
+                // Ekstrak nama dan kelas dari format "Nama (Kelas)"
+                if (preg_match('/^(.+)\s+\((.+)\)$/', $rawName, $matches)) {
+                    $studentName  = trim($matches[1]);
+                    $studentClass = trim($matches[2]);
+                    $rawFolderName    = $studentClass . '_' . $studentName;
+                    $studentFolderName = preg_replace('/[^A-Za-z0-9 _\-]/', '', $rawFolderName);
+                    $studentFolderName = trim($studentFolderName);
+
+                    if ($studentFolderName) {
+                        $studentFolderId = $this->googleDriveService->findFolderByName(
+                            $studentFolderName,
+                            $fileRequest->google_drive_folder_id
+                        );
+
+                        if ($studentFolderId) {
+                            $this->googleDriveService->deleteFile($studentFolderId);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // Silent fail — folder sudah mau dihapus isinya, kalau folder-nya gagal hapus tidak masalah
+            }
+        }
 
         return back()->with('success', "Berhasil menghapus $deletedCount file milik {$request->submitter_name}.");
     }
@@ -271,29 +295,30 @@ class FileRequestController extends Controller
 
         // Check if active
         if (!$fileRequest->is_active) {
-            return back()->with('error', 'Permintaan file ini sudah tidak aktif.');
+            return redirect()->route('file-requests.upload', $slug)
+                ->with('error', 'Permintaan file ini sudah tidak aktif.');
         }
         
         // Check Deadline
         if ($fileRequest->deadline && now()->gt($fileRequest->deadline)) {
-            return back()->with('error', 'Batas waktu pengumpulan telah berakhir.');
+            return redirect()->route('file-requests.upload', $slug)
+                ->with('error', 'Batas waktu pengumpulan telah berakhir.');
         }
 
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'class_name' => 'required|string|max:255', // Validate Class
-            'notes' => 'nullable|string|max:1000', // Validate Notes
-            'files' => 'required|array',
-            'files.*' => 'required|file|max:512000', // 500MB each
+        $validated = $request->validate([
+            'name'       => 'required|string|max:255',
+            'class_name' => 'required|string|max:255',
+            'notes'      => 'nullable|string|max:1000',
+            'files'      => 'required|array|min:1',
+            'files.*'    => 'required', // Tanpa max — batas diurus PHP & Google Drive
         ]);
 
-        // Get Teacher's Token to upload to their Drive
-        $token = UserGoogleToken::where('user_id', $fileRequest->teacher_id)
-            ->where('expires_at', '>', now())
-            ->first();
+        // Ambil token guru — tidak filter expires_at agar bisa auto-refresh
+        $token = UserGoogleToken::where('user_id', $fileRequest->teacher_id)->first();
 
         if (!$token) {
-            return back()->with('error', 'Dosen/Guru belum menghubungkan Google Drive. Hubungi pemilik link.');
+            return redirect()->route('file-requests.upload', $slug)
+                ->with('error', 'Guru belum menghubungkan Google Drive. Hubungi pemilik link ini.');
         }
 
         try {
@@ -301,53 +326,67 @@ class FileRequestController extends Controller
 
             $files = $request->file('files');
             
-            // Create Hierarchy: Request Folder -> {Class}_{Name}
-            $studentFolderName = $request->class_name . '_' . $request->name;
+            // Buat nama folder siswa: {Kelas}_{Nama} (hanya karakter aman)
+            $rawFolderName    = $request->class_name . '_' . $request->name;
+            $studentFolderName = preg_replace('/[^A-Za-z0-9 _\-]/', '', $rawFolderName);
+            $studentFolderName = trim($studentFolderName) ?: 'Siswa_' . now()->timestamp;
             
-            // Allow Special Characters in name? Google Drive handles them, but for strictness maybe clean it?
-            // For now let's clean it slightly to be safe
-            $studentFolderName = preg_replace('/[^A-Za-z0-9 _-]/', '', $studentFolderName);
-            
-            // Check if student folder already exists in the request folder?
-            // To do this efficiently without storing ID, we search.
-            $studentFolderId = $this->googleDriveService->findFolderByName($studentFolderName, $fileRequest->google_drive_folder_id);
+            // Cari folder siswa yang sudah ada, buat jika belum
+            $studentFolderId = $this->googleDriveService->findFolderByName(
+                $studentFolderName,
+                $fileRequest->google_drive_folder_id
+            );
 
             if (!$studentFolderId) {
-                $studentFolderId = $this->googleDriveService->createFolder($studentFolderName, $fileRequest->google_drive_folder_id);
+                $studentFolderId = $this->googleDriveService->createFolder(
+                    $studentFolderName,
+                    $fileRequest->google_drive_folder_id
+                );
             }
 
+            $uploadedFileNames = [];
             foreach ($files as $file) {
-                 // Upload Logic - Upload to Student's Folder
+                // Simpan ukuran & mime SEBELUM upload karena uploadFile()
+                // menghapus file temp dari disk setelah selesai upload ke Drive
+                $fileSize  = $file->getSize();
+                $mimeType  = $file->getMimeType() ?: 'application/octet-stream';
+                $origName  = $file->getClientOriginalName();
+
                 $driveFile = $this->googleDriveService->uploadFile(
                     $file,
-                    $studentFolderId, // Use student specific folder
-                    $file->getClientOriginalName() // Keep original name
+                    $studentFolderId,
+                    $origName
                 );
 
-                // Save to DB
                 FileSubmission::create([
-                    'file_request_id' => $fileRequest->id,
-                    'user_id' => null, // Anonymous
-                    'submitter_name' => $request->name . ' (' . $request->class_name . ')',
-                    'original_filename' => $file->getClientOriginalName(),
-                    'google_drive_file_id' => $driveFile['id'],
-                    'google_drive_url' => $driveFile['url'],
-                    'file_size' => $file->getSize(),
-                    'mime_type' => $file->getMimeType(),
-                    'submitted_at' => now(),
-                    'student_notes' => $request->notes,
+                    'file_request_id'     => $fileRequest->id,
+                    'user_id'             => null,
+                    'submitter_name'      => $request->name . ' (' . $request->class_name . ')',
+                    'original_filename'   => $origName,
+                    'google_drive_file_id'=> $driveFile['id'],
+                    'google_drive_url'    => $driveFile['url'],
+                    'file_size'           => $fileSize,
+                    'mime_type'           => $mimeType,
+                    'submitted_at'        => now(),
+                    'student_notes'       => $request->notes,
                 ]);
+
+                $uploadedFileNames[] = $origName;
             }
 
-            return back()->with('success', 'File berhasil diupload!')->with('submission_details', [
-                'name' => $request->name,
-                'class' => $request->class_name,
-                'notes' => $request->notes,
-                'files' => collect($files)->map(fn($f) => $f->getClientOriginalName())->toArray(),
-            ]);
+            // Gunakan redirect()->route() (bukan back()) agar session flash terbawa dengan benar
+            return redirect()->route('file-requests.upload', $slug)
+                ->with('submission_details', [
+                    'name'  => $request->name,
+                    'class' => $request->class_name,
+                    'notes' => $request->notes,
+                    'files' => $uploadedFileNames,
+                ]);
 
         } catch (\Exception $e) {
-            return back()->with('error', 'Gagal mengupload file: ' . $e->getMessage());
+            return redirect()->route('file-requests.upload', $slug)
+                ->with('error', 'Gagal mengupload file: ' . $e->getMessage())
+                ->withInput();
         }
     }
 }
