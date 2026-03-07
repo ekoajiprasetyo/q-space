@@ -23,3 +23,21 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# -------------------------------------------------------
+# PHP Upload Limits (untuk shared hosting)
+# File lalu diteruskan ke Google Drive, tidak disimpan lokal
+# -------------------------------------------------------
+<IfModule mod_php.c>
+    php_value upload_max_filesize 2048M
+    php_value post_max_size 2100M
+    php_value max_execution_time 600
+    php_value max_input_time 600
+    php_value memory_limit 512M
+</IfModule>
+
+# Untuk hosting yang pakai PHP sebagai CGI/FastCGI
+<IfModule mod_fcgid.c>
+    FcgidMaxRequestLen 2202009600
+</IfModule>
+
