@@ -45,4 +45,9 @@ class FileRequest extends Model
     {
         return $this->hasMany(FileSubmission::class);
     }
+
+    public function uploadTasks(): HasMany
+    {
+        return $this->hasMany(UploadTask::class);
+    }
 }

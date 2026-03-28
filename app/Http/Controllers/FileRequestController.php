@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\UploadSubmissionToDriveJob;
 use App\Models\FileRequest;
 use App\Models\FileSubmission;
+use App\Models\UploadTask;
 use App\Models\UserGoogleToken;
 use App\Services\GoogleDriveService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 class FileRequestController extends Controller
@@ -268,8 +272,69 @@ class FileRequestController extends Controller
              ->latest()
              ->get()
              ->groupBy('submitter_name');
+        
+        $uploadTasks = UploadTask::where('file_request_id', $fileRequest->id)
+            ->whereIn('submitter_name', $submitterNames)
+            ->latest()
+            ->get()
+            ->groupBy('submitter_name');
 
-        return view('file-requests.show', compact('fileRequest', 'submissions', 'distinctSubmitters'));
+        $uploadTaskSummary = UploadTask::where('file_request_id', $fileRequest->id)
+            ->selectRaw("SUM(CASE WHEN status IN ('queued','processing') THEN 1 ELSE 0 END) as pending_count")
+            ->selectRaw("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count")
+            ->first();
+
+        $orphanUploadTasks = UploadTask::where('file_request_id', $fileRequest->id)
+            ->whereIn('status', ['queued', 'processing', 'failed'])
+            ->whereNotIn('submitter_name', $submitterNames)
+            ->latest()
+            ->get();
+
+        $queueRunnerUrl = URL::temporarySignedRoute(
+            'queue.trigger',
+            now()->addMinutes(10),
+            ['runs' => 1]
+        );
+
+        return view('file-requests.show', compact(
+            'fileRequest',
+            'submissions',
+            'distinctSubmitters',
+            'uploadTasks',
+            'uploadTaskSummary',
+            'orphanUploadTasks',
+            'queueRunnerUrl'
+        ));
+    }
+
+    public function retryUploadTask(FileRequest $fileRequest, UploadTask $uploadTask)
+    {
+        if ((int)$fileRequest->teacher_id !== (int)Auth::id()) {
+            abort(403);
+        }
+
+        if ((int)$uploadTask->file_request_id !== (int)$fileRequest->id) {
+            abort(404);
+        }
+
+        if (!in_array($uploadTask->status, ['failed', 'queued'], true)) {
+            return back()->with('error', 'Task ini tidak bisa di-retry.');
+        }
+
+        if (!\Storage::disk('local')->exists($uploadTask->staged_path)) {
+            return back()->with('error', 'File staging untuk retry tidak ditemukan di server.');
+        }
+
+        $uploadTask->update([
+            'status' => 'queued',
+            'queued_at' => now(),
+            'processed_at' => null,
+            'last_error' => null,
+        ]);
+
+        UploadSubmissionToDriveJob::dispatch($uploadTask->id)->onQueue('uploads');
+
+        return back()->with('success', 'Retry upload dijadwalkan. Refresh halaman beberapa saat lagi.');
     }
 
     public function publicUpload($slug)
@@ -305,12 +370,12 @@ class FileRequestController extends Controller
                 ->with('error', 'Batas waktu pengumpulan telah berakhir.');
         }
 
-        $validated = $request->validate([
+        $request->validate([
             'name'       => 'required|string|max:255',
             'class_name' => 'required|string|max:255',
             'notes'      => 'nullable|string|max:1000',
             'files'      => 'required|array|min:1',
-            'files.*'    => 'required', // Tanpa max — batas diurus PHP & Google Drive
+            'files.*'    => 'required|file',
         ]);
 
         // Ambil token guru — tidak filter expires_at agar bisa auto-refresh
@@ -346,44 +411,63 @@ class FileRequestController extends Controller
 
             $uploadedFileNames = [];
             foreach ($files as $file) {
-                // Simpan ukuran & mime SEBELUM upload karena uploadFile()
-                // menghapus file temp dari disk setelah selesai upload ke Drive
-                $fileSize  = $file->getSize();
-                $mimeType  = $file->getMimeType() ?: 'application/octet-stream';
-                $origName  = $file->getClientOriginalName();
+                if (!$file->isValid()) {
+                    throw new \RuntimeException($file->getErrorMessage());
+                }
 
-                $driveFile = $this->googleDriveService->uploadFile(
-                    $file,
-                    $studentFolderId,
-                    $origName
+                $origName = $file->getClientOriginalName();
+                $mimeType = $file->getMimeType() ?: 'application/octet-stream';
+                $fileSize = (int) $file->getSize();
+                $safeName = preg_replace('/[^A-Za-z0-9._-]/', '_', $origName) ?: ('file_' . now()->timestamp);
+                $stagedPath = $file->storeAs(
+                    'pending-uploads/' . $fileRequest->id,
+                    Str::uuid() . '_' . $safeName,
+                    'local'
                 );
 
-                FileSubmission::create([
-                    'file_request_id'     => $fileRequest->id,
-                    'user_id'             => null,
-                    'submitter_name'      => $request->name . ' (' . $request->class_name . ')',
-                    'original_filename'   => $origName,
-                    'google_drive_file_id'=> $driveFile['id'],
-                    'google_drive_url'    => $driveFile['url'],
-                    'file_size'           => $fileSize,
-                    'mime_type'           => $mimeType,
-                    'submitted_at'        => now(),
-                    'student_notes'       => $request->notes,
+                $task = UploadTask::create([
+                    'file_request_id' => $fileRequest->id,
+                    'teacher_id' => $fileRequest->teacher_id,
+                    'submitter_name' => $request->name . ' (' . $request->class_name . ')',
+                    'class_name' => $request->class_name,
+                    'student_notes' => $request->notes,
+                    'original_filename' => $origName,
+                    'mime_type' => $mimeType,
+                    'file_size' => $fileSize,
+                    'staged_path' => $stagedPath,
+                    'student_folder_id' => $studentFolderId,
+                    'status' => 'queued',
+                    'queued_at' => now(),
                 ]);
+
+                UploadSubmissionToDriveJob::dispatch($task->id)->onQueue('uploads');
 
                 $uploadedFileNames[] = $origName;
             }
 
-            // Gunakan redirect()->route() (bukan back()) agar session flash terbawa dengan benar
+            $runnerUrl = URL::temporarySignedRoute(
+                'queue.trigger',
+                now()->addMinutes(30),
+                ['runs' => 1]
+            );
+
             return redirect()->route('file-requests.upload', $slug)
                 ->with('submission_details', [
-                    'name'  => $request->name,
+                    'name' => $request->name,
                     'class' => $request->class_name,
                     'notes' => $request->notes,
                     'files' => $uploadedFileNames,
+                    'is_queued' => true,
+                    'runner_url' => $runnerUrl,
                 ]);
 
         } catch (\Exception $e) {
+            Log::error('Public upload staging failed', [
+                'slug' => $slug,
+                'teacher_id' => $fileRequest->teacher_id,
+                'error' => $e->getMessage(),
+            ]);
+
             return redirect()->route('file-requests.upload', $slug)
                 ->with('error', 'Gagal mengupload file: ' . $e->getMessage())
                 ->withInput();

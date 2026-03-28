@@ -47,6 +47,7 @@ Route::domain(env('APP_DOMAIN', 'space.q-link.my.id'))->group(function () {
         Route::resource('file-requests', \App\Http\Controllers\FileRequestController::class)->only(['create', 'store', 'show', 'destroy']);
         Route::post('/file-requests/{fileRequest}/toggle', [\App\Http\Controllers\FileRequestController::class, 'toggleStatus'])->name('file-requests.toggle');
         Route::delete('/file-requests/{fileRequest}/submissions', [\App\Http\Controllers\FileRequestController::class, 'destroySubmission'])->name('file-requests.submissions.destroy');
+        Route::post('/file-requests/{fileRequest}/upload-tasks/{uploadTask}/retry', [\App\Http\Controllers\FileRequestController::class, 'retryUploadTask'])->name('file-requests.upload-tasks.retry');
 
         // Paths (Short Links Management)
         Route::resource('paths', \App\Http\Controllers\ShortLinkController::class)->only(['index', 'store', 'destroy', 'update']);
@@ -72,6 +73,9 @@ Route::domain(env('APP_DOMAIN', 'space.q-link.my.id'))->group(function () {
     // Public Upload Link
     Route::get('/upload/{slug}', [\App\Http\Controllers\FileRequestController::class, 'publicUpload'])->name('file-requests.upload');
     Route::post('/upload/{slug}', [\App\Http\Controllers\FileRequestController::class, 'storePublicUpload'])->name('file-requests.upload.store');
+    Route::get('/queue/trigger', [\App\Http\Controllers\PublicQueueRunnerController::class, 'trigger'])
+        ->middleware(['signed', 'throttle:30,1'])
+        ->name('queue.trigger');
 
     // QR Text View (Public)
     Route::get('/t/{slug}', [\App\Http\Controllers\QrTextController::class, 'show'])->name('qr-text.show');

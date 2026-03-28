@@ -68,6 +68,22 @@ ln -s /home/englishh/q-space-core/storage/app/public /home/englishh/public_html/
    ```
    *Catatan: Ini aman karena kita sudah memindahkan file migrasi `users` yang konflik.*
 
+## 4.1. Aktivasi Queue Worker (WAJIB untuk Upload File Besar)
+Mulai versi upload async, file besar diproses lewat queue agar request web tidak timeout.
+
+1. Pastikan `.env` di hosting berisi:
+   - `QUEUE_CONNECTION=database`
+   - `DB_QUEUE_RETRY_AFTER=3600`
+2. Tambahkan Cron Job di cPanel (setiap 1 menit):
+   ```bash
+   * * * * * /usr/local/bin/php /home/englishh/q-space-core/artisan queue:work database --queue=uploads,default --sleep=1 --tries=3 --timeout=1800 --stop-when-empty >> /home/englishh/q-space-core/storage/logs/queue-worker.log 2>&1
+   ```
+3. Alternatif ringan (jika hosting melarang worker panjang), pakai:
+   ```bash
+   * * * * * /usr/local/bin/php /home/englishh/q-space-core/artisan schedule:run >> /dev/null 2>&1
+   ```
+   lalu atur scheduler untuk menjalankan `queue:work --stop-when-empty`.
+
 ## 5. Verifikasi
 1. Buka `https://space.q-link.my.id`
 2. Coba login dengan akun Q-Link Anda. Seharusnya langsung berhasil (SSO).

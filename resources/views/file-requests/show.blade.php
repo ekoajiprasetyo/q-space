@@ -4,16 +4,24 @@
         deleteSubmissionModalOpen: false,
         deleteSubmitterName: '',
         deleteActionUrl: '', 
+        queueRunnerUrl: @js($queueRunnerUrl ?? null),
         setView(val) { 
             this.view = val; 
             localStorage.setItem('file_request_view_mode', val); 
+        },
+        async runQueueOnce() {
+            if (!this.queueRunnerUrl) return;
+            try {
+                await fetch(this.queueRunnerUrl, { method: 'GET', keepalive: true, credentials: 'same-origin' });
+            } catch (_) {}
         },
         confirmDeleteSubmission(url, name) {
             this.deleteActionUrl = url;
             this.deleteSubmitterName = name;
             this.deleteSubmissionModalOpen = true;
         }
-    }" class="pt-4 pb-20 max-w-7xl mx-auto sm:px-6 lg:px-8 relative isolate">
+    }" x-init="setTimeout(() => runQueueOnce(), 500)"
+    class="pt-4 pb-20 max-w-7xl mx-auto sm:px-6 lg:px-8 relative isolate">
         
         <!-- Background Decor (Dashboard Style) -->
         <div class="absolute -top-20 -left-20 w-[500px] h-[500px] bg-blue-200/60 rounded-full blur-[80px] -z-10 pointer-events-none mix-blend-multiply"></div>
@@ -82,6 +90,57 @@
             </div>
         </div>
 
+        @php
+            $pendingCount = (int) ($uploadTaskSummary->pending_count ?? 0);
+            $failedCount = (int) ($uploadTaskSummary->failed_count ?? 0);
+        @endphp
+        @if($pendingCount > 0 || $failedCount > 0)
+            <div class="mb-6 mx-4 sm:mx-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 flex flex-wrap gap-3 items-center">
+                @if($pendingCount > 0)
+                    <span class="px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold">
+                        {{ $pendingCount }} file sedang diproses ke Google Drive
+                    </span>
+                @endif
+                @if($failedCount > 0)
+                    <span class="px-3 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+                        {{ $failedCount }} file gagal upload - perlu retry
+                    </span>
+                @endif
+            </div>
+        @endif
+
+        @if(isset($orphanUploadTasks) && $orphanUploadTasks->count() > 0)
+            <div class="mb-6 mx-4 sm:mx-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
+                <p class="text-sm font-bold text-slate-700 mb-3">Upload Pending/Gagal (belum masuk daftar submission)</p>
+                <div class="space-y-2">
+                    @foreach($orphanUploadTasks as $task)
+                        <div class="flex flex-wrap items-center justify-between gap-3 border border-slate-100 rounded-xl px-3 py-2">
+                            <div class="min-w-0">
+                                <p class="text-xs font-bold text-slate-700 truncate">{{ $task->submitter_name }} - {{ $task->original_filename }}</p>
+                                <p class="text-[11px] text-slate-500">
+                                    Status:
+                                    <span class="font-bold {{ $task->status === 'failed' ? 'text-red-600' : 'text-amber-600' }}">
+                                        {{ strtoupper($task->status) }}
+                                    </span>
+                                    @if($task->last_error)
+                                        - {{ \Illuminate\Support\Str::limit($task->last_error, 140) }}
+                                    @endif
+                                </p>
+                            </div>
+                            @if($task->status === 'failed')
+                                <form action="{{ route('file-requests.upload-tasks.retry', [$fileRequest, $task]) }}" method="POST">
+                                    @csrf
+                                    <button type="submit" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-500 transition-colors">
+                                        Retry
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
         @if($submissions->isEmpty())
              <!-- Empty State -->
             <div class="bg-white rounded-[2rem] border border-slate-200 p-12 text-center shadow-sm mx-4 sm:mx-0">
@@ -104,6 +163,11 @@
                 <div x-show="view === 'list'" class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="divide-y divide-slate-100">
                         @foreach($submissions as $submitter => $files)
+                            @php
+                                $tasksForSubmitter = $uploadTasks[$submitter] ?? collect();
+                                $pendingTasksForSubmitter = $tasksForSubmitter->whereIn('status', ['queued', 'processing']);
+                                $failedTasksForSubmitter = $tasksForSubmitter->where('status', 'failed');
+                            @endphp
                             <div x-data="{ open: false }" class="group bg-white hover:bg-slate-50/80 transition-colors duration-200">
                                 <!-- Main Row -->
                                 <div @click="open = !open" class="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer">
@@ -147,6 +211,16 @@
                                             <span class="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg text-xs font-bold border border-indigo-100">
                                                 {{ $files->count() }} File
                                             </span>
+                                            @if($pendingTasksForSubmitter->count() > 0)
+                                                <span class="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-amber-200">
+                                                    {{ $pendingTasksForSubmitter->count() }} Processing
+                                                </span>
+                                            @endif
+                                            @if($failedTasksForSubmitter->count() > 0)
+                                                <span class="bg-red-50 text-red-700 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-red-200">
+                                                    {{ $failedTasksForSubmitter->count() }} Failed
+                                                </span>
+                                            @endif
                                             
                                             <button @click.stop="confirmDeleteSubmission('{{ route('file-requests.submissions.destroy', $fileRequest) }}', '{{ $submitter }}')" 
                                                 class="w-8 h-8 rounded-full bg-red-50 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all duration-300 ml-2" title="Hapus Semua File Siswa Ini">
@@ -164,6 +238,26 @@
                                 <!-- Expanded Content area -->
                                 <div x-show="open" x-collapse style="display: none;">
                                     <div class="bg-indigo-50/30 border-t border-indigo-50/50 p-5 sm:pl-20 sm:pr-8">
+                                        @if($failedTasksForSubmitter->count() > 0)
+                                            <div class="mb-4 p-3 rounded-xl bg-red-50 border border-red-200">
+                                                <p class="text-xs font-bold text-red-700 mb-2">Upload Gagal (perlu retry):</p>
+                                                <div class="space-y-2">
+                                                    @foreach($failedTasksForSubmitter as $failedTask)
+                                                        <form action="{{ route('file-requests.upload-tasks.retry', [$fileRequest, $failedTask]) }}" method="POST" class="flex items-center justify-between gap-3 bg-white border border-red-100 rounded-lg px-3 py-2">
+                                                            @csrf
+                                                            <div class="min-w-0">
+                                                                <p class="text-xs font-bold text-slate-700 truncate">{{ $failedTask->original_filename }}</p>
+                                                                <p class="text-[11px] text-red-600 truncate">{{ $failedTask->last_error ?: 'Gagal upload ke Google Drive' }}</p>
+                                                            </div>
+                                                            <button type="submit" class="shrink-0 px-3 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-500 transition-colors">
+                                                                Retry
+                                                            </button>
+                                                        </form>
+                                                    @endforeach
+                                                </div>
+                                            </div>
+                                        @endif
+
                                         <!-- Shared File List Component -->
                                         @include('file-requests.partials.file-list', ['files' => $files])
                                     </div>

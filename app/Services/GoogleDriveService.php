@@ -2,9 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\UserGoogleToken;
 use Google\Client;
 use Google\Service\Drive;
-use App\Models\UserGoogleToken;
+use GuzzleHttp\Client as GuzzleClient;
 
 class GoogleDriveService
 {
@@ -19,6 +20,10 @@ class GoogleDriveService
         $this->client->setRedirectUri(config('services.google.redirect_uri'));
         $this->client->setAccessType('offline');
         $this->client->addScope(Drive::DRIVE_FILE);
+        $this->client->setHttpClient(new GuzzleClient([
+            'timeout' => (int) config('services.google.request_timeout', 900),
+            'connect_timeout' => (int) config('services.google.connect_timeout', 30),
+        ]));
     }
 
     public function setAccessToken(UserGoogleToken $token): self
@@ -41,13 +46,14 @@ class GoogleDriveService
         }
 
         $this->driveService = new Drive($this->client);
+
         return $this;
     }
 
     public function findFolderByName(string $name, ?string $parentId = null): ?string
     {
-        $q = "mimeType='application/vnd.google-apps.folder' and name='" . str_replace("'", "\'", $name) . "' and trashed=false";
-        
+        $q = "mimeType='application/vnd.google-apps.folder' and name='" . str_replace("'", "\\'", $name) . "' and trashed=false";
+
         if ($parentId) {
             $q .= " and '" . $parentId . "' in parents";
         }
@@ -72,74 +78,105 @@ class GoogleDriveService
             'mimeType' => 'application/vnd.google-apps.folder',
         ];
 
-        // Google Drive API v3 tidak menerima 'parents' kosong ([]).
-        // Hanya sertakan jika parentId ada.
         if ($parentId) {
             $metadata['parents'] = [$parentId];
         }
 
         $fileMetadata = new Drive\DriveFile($metadata);
-
         $folder = $this->driveService->files->create($fileMetadata, ['fields' => 'id']);
+
         return $folder->id;
     }
 
     public function uploadFile($file, string $folderId, ?string $customName = null): array
     {
+        return $this->uploadFromPath(
+            $file->getRealPath(),
+            $folderId,
+            $customName ?? $file->getClientOriginalName(),
+            $file->getMimeType() ?: 'application/octet-stream',
+            (int) $file->getSize()
+        );
+    }
+
+    public function uploadLocalFile(string $absolutePath, string $folderId, string $customName, ?string $mimeType = null): array
+    {
+        if (!is_file($absolutePath)) {
+            throw new \RuntimeException('Upload source file not found: ' . $absolutePath);
+        }
+
+        return $this->uploadFromPath(
+            $absolutePath,
+            $folderId,
+            $customName,
+            $mimeType ?: (mime_content_type($absolutePath) ?: 'application/octet-stream'),
+            (int) filesize($absolutePath)
+        );
+    }
+
+    protected function uploadFromPath(
+        string $filePath,
+        string $folderId,
+        string $fileName,
+        string $mimeType,
+        int $fileSize
+    ): array {
         $fileMetadata = new Drive\DriveFile([
-            'name'    => $customName ?? $file->getClientOriginalName(),
+            'name' => $fileName,
             'parents' => [$folderId],
         ]);
 
-        $filePath = $file->getRealPath();
-        $fileSize = $file->getSize();
-        $mimeType = $file->getMimeType() ?: 'application/octet-stream';
-
-        // Gunakan resumable/chunked upload (streaming) — file tidak dimuat ke RAM sekaligus.
-        // Ini memungkinkan upload file besar tanpa membebani memory hosting.
+        // Defer MUST be enabled before calling files->create()
+        // so we receive RequestInterface for resumable upload.
         $this->driveService->getClient()->setDefer(true);
 
         $request = $this->driveService->files->create($fileMetadata, [
             'fields' => 'id, name, size, mimeType, webViewLink',
         ]);
 
-        $chunkSize = 5 * 1024 * 1024; // 5 MB per chunk
-        $media = new \Google\Http\MediaFileUpload(
-            $this->driveService->getClient(),
-            $request,
-            $mimeType,
-            null,
-            true,        // resumable = true
-            $chunkSize
-        );
-        $media->setFileSize($fileSize);
+        $chunkSize = (int) config('services.google.upload_chunk_size', 8 * 1024 * 1024);
+        $chunkSize = max(256 * 1024, $chunkSize);
 
-        // Stream file per chunk — RAM hanya terpakai 5MB setiap saat
-        $uploadedFile = false;
         $handle = fopen($filePath, 'rb');
-
-        while (!$uploadedFile && !feof($handle)) {
-            $chunk       = fread($handle, $chunkSize);
-            $uploadedFile = $media->nextChunk($chunk);
+        if ($handle === false) {
+            throw new \RuntimeException('Failed to open file stream for upload.');
         }
 
-        fclose($handle);
+        $uploadedFile = false;
 
-        // Hapus file temp dari disk setelah berhasil diupload ke Google Drive
-        // agar file tidak menumpuk di folder temporary PHP/sistem
-        if (file_exists($filePath)) {
-            @unlink($filePath);
+        try {
+            $media = new \Google\Http\MediaFileUpload(
+                $this->driveService->getClient(),
+                $request,
+                $mimeType,
+                null,
+                true,
+                $chunkSize
+            );
+            $media->setFileSize($fileSize);
+
+            while (!$uploadedFile && !feof($handle)) {
+                $chunk = fread($handle, $chunkSize);
+                if ($chunk === false) {
+                    throw new \RuntimeException('Failed to read file chunk.');
+                }
+                $uploadedFile = $media->nextChunk($chunk);
+            }
+        } finally {
+            fclose($handle);
+            $this->driveService->getClient()->setDefer(false);
         }
 
-        // Kembalikan ke mode normal (non-deferred)
-        $this->driveService->getClient()->setDefer(false);
+        if ($uploadedFile === false) {
+            throw new \RuntimeException('Google Drive upload did not complete.');
+        }
 
         return [
-            'id'       => $uploadedFile->id,
-            'name'     => $uploadedFile->name,
-            'size'     => $fileSize,
+            'id' => $uploadedFile->id,
+            'name' => $uploadedFile->name,
+            'size' => $fileSize,
             'mimeType' => $uploadedFile->mimeType,
-            'url'      => $uploadedFile->webViewLink,
+            'url' => $uploadedFile->webViewLink,
         ];
     }
 

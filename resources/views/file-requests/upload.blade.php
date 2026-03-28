@@ -119,13 +119,29 @@
 
                     @if(session('submission_details'))
                         <!-- Success State View -->
-                        <div class="h-full flex flex-col items-center justify-center text-center animate-fade-in-up py-8">
+                        <div class="h-full flex flex-col items-center justify-center text-center animate-fade-in-up py-8"
+                            x-data="{
+                                queueRunnerUrl: @js(session('submission_details')['runner_url'] ?? null),
+                                async triggerQueueRunner() {
+                                    if (!this.queueRunnerUrl) return;
+                                    try {
+                                        await fetch(this.queueRunnerUrl, { method: 'GET', keepalive: true, credentials: 'same-origin' });
+                                    } catch (_) {
+                                        // Silent fail: runner bisa dicoba lagi saat user reload
+                                    }
+                                }
+                            }"
+                            x-init="setTimeout(() => triggerQueueRunner(), 700)">
                             <div class="w-24 h-24 rounded-3xl bg-teal-50 text-teal-500 flex items-center justify-center mb-6 shadow-xl shadow-teal-500/10">
                                 <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                             </div>
                             
-                            <h2 class="text-3xl font-black text-slate-800 mb-2">Berhasil Terkirim!</h2>
-                            <p class="text-slate-500 font-medium mb-10 max-w-sm">Tugas Anda telah berhasil diupload ke sistem kami.</p>
+                            <h2 class="text-3xl font-black text-slate-800 mb-2">
+                                {{ (session('submission_details')['is_queued'] ?? false) ? 'Upload Diterima!' : 'Berhasil Terkirim!' }}
+                            </h2>
+                            <p class="text-slate-500 font-medium mb-10 max-w-sm">
+                                {{ (session('submission_details')['is_queued'] ?? false) ? 'File sudah diterima server dan sedang diproses ke Google Drive. Mohon tunggu beberapa saat.' : 'Tugas Anda telah berhasil diupload ke sistem kami.' }}
+                            </p>
 
                             <div class="w-full bg-slate-50 rounded-3xl p-8 mb-8 border border-slate-100/50 text-left">
                                 <div class="grid grid-cols-2 gap-6 mb-6">
@@ -147,7 +163,10 @@
                                 @endif
 
                                 <div>
-                                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">File Terupload ({{ count(session('submission_details')['files']) }})</p>
+                                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+                                        {{ (session('submission_details')['is_queued'] ?? false) ? 'File Dalam Proses' : 'File Terupload' }}
+                                        ({{ count(session('submission_details')['files']) }})
+                                    </p>
                                     <div class="space-y-2">
                                         @foreach(session('submission_details')['files'] as $fileName)
                                             <div class="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200/50">
