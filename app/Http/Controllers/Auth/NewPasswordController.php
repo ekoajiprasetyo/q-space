@@ -15,11 +15,20 @@ use Illuminate\View\View;
 
 class NewPasswordController extends Controller
 {
+    private function redirectToMasterForgotPassword(): RedirectResponse
+    {
+        return redirect()->away(config('app.q_link_master_url').'/forgot-password');
+    }
+
     /**
      * Display the password reset view.
      */
-    public function create(Request $request): View
+    public function create(Request $request): View|RedirectResponse
     {
+        if (!config('app.auth_bridge.allow_local_identity_mutation', true)) {
+            return $this->redirectToMasterForgotPassword();
+        }
+
         return view('auth.reset-password', ['request' => $request]);
     }
 
@@ -30,6 +39,10 @@ class NewPasswordController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        if (!config('app.auth_bridge.allow_local_identity_mutation', true)) {
+            return $this->redirectToMasterForgotPassword();
+        }
+
         $request->validate([
             'token' => ['required'],
             'email' => ['required', 'email'],

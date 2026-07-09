@@ -1,7 +1,9 @@
 <?php
 
-use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
+
+$shortLinkDomain = env('SHORTLINK_DOMAIN', 's.q-link.my.id');
+$appDomain = env('APP_DOMAIN', 'space.q-link.my.id');
 
 /*
 |--------------------------------------------------------------------------
@@ -12,7 +14,7 @@ use Illuminate\Support\Facades\Route;
 | It handles the root redirect (to main app) and the short code redirection.
 |
 */
-Route::domain('s.q-link.my.id')->group(function () {
+Route::domain($shortLinkDomain)->group(function () {
     Route::get('/', function () {
         abort(404);
     });
@@ -31,7 +33,7 @@ Route::domain('s.q-link.my.id')->group(function () {
 | Change APP_DOMAIN in .env for local development (e.g., localhost).
 |
 */
-Route::domain(env('APP_DOMAIN', 'space.q-link.my.id'))->group(function () {
+Route::domain($appDomain)->group(function () {
     
     Route::get('/', function () {
         return view('welcome');
@@ -61,10 +63,6 @@ Route::domain(env('APP_DOMAIN', 'space.q-link.my.id'))->group(function () {
         // Crews (Group Generator)
         Route::get('/crews', [\App\Http\Controllers\CrewsController::class, 'index'])->name('crews.index');
 
-        // Profile
-        Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-        Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     });
 
     Route::get('/auth/google/redirect', [\App\Http\Controllers\Auth\GoogleAuthController::class, 'redirect'])->name('auth.google.redirect');

@@ -17,8 +17,12 @@ class RegisteredUserController extends Controller
     /**
      * Display the registration view.
      */
-    public function create(): View
+    public function create(): View|RedirectResponse
     {
+        if (!config('app.auth_bridge.allow_local_registration', true)) {
+            return redirect()->away(config('app.q_link_master_url').'/register');
+        }
+
         return view('auth.register');
     }
 
@@ -29,6 +33,10 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        if (!config('app.auth_bridge.allow_local_registration', true)) {
+            return redirect()->away(config('app.q_link_master_url').'/register');
+        }
+
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],

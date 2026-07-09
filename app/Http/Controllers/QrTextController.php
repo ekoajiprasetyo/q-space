@@ -20,7 +20,7 @@ class QrTextController extends Controller
         ]);
 
         $qrText = QrText::create([
-            'user_id' => Auth::id(),
+            ...QrText::ownerAttributes((int) Auth::id()),
             'title' => $request->title,
             'content' => $request->content,
             'theme' => $request->theme ?? 'default',
@@ -55,7 +55,7 @@ class QrTextController extends Controller
     {
         $qrText = QrText::findOrFail($id);
 
-        if ($qrText->user_id != Auth::id()) {
+        if (! $qrText->ownerMatches((int) Auth::id())) {
             abort(403);
         }
 

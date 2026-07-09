@@ -2,7 +2,16 @@
 
 use Illuminate\Support\Str;
 
+$configuredSearchPath = (string) env('DB_SCHEMA', 'public');
+$appSchema = trim(explode(',', $configuredSearchPath)[0] ?? 'public');
+
 return [
+
+    'schemas' => [
+        'app' => env('DB_APP_SCHEMA', $appSchema !== '' ? $appSchema : 'public'),
+        'core' => env('DB_CORE_SCHEMA', 'core'),
+        'search_path' => $configuredSearchPath,
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -94,7 +103,7 @@ return [
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
-            'search_path' => 'public',
+            'search_path' => $configuredSearchPath,
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 

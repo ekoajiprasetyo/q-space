@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ShortLink;
 use Illuminate\Http\Request;
 
 class ShortLinkController extends Controller
 {
     public function index()
     {
-        $query = \App\Models\ShortLink::where('user_id', auth()->id());
+        $query = ShortLink::ownedByIdentity((int) auth()->id());
 
         if (request('search')) {
             $search = request('search');
@@ -36,8 +37,8 @@ class ShortLinkController extends Controller
             'short_code.alpha_dash' => 'Kode alias hanya boleh berisi huruf, angka, strip, dan garis bawah.',
         ]);
 
-        \App\Models\ShortLink::create([
-            'user_id' => auth()->id(),
+        ShortLink::create([
+            ...ShortLink::ownerAttributes((int) auth()->id()),
             'name' => $request->name,
             'original_url' => $request->original_url,
             'short_code' => $request->short_code ?? \Illuminate\Support\Str::random(6),
@@ -46,9 +47,9 @@ class ShortLinkController extends Controller
         return redirect()->route('paths.index')->with('success', 'Path berhasil dibuat!');
     }
 
-    public function destroy(\App\Models\ShortLink $path)
+    public function destroy(ShortLink $path)
     {
-        if ((int)$path->user_id !== (int)auth()->id()) {
+        if (! $path->ownerMatches((int) auth()->id())) {
             abort(403);
         }
         $path->delete();
@@ -65,9 +66,9 @@ class ShortLinkController extends Controller
         return redirect($link->original_url);
     }
 
-    public function update(Request $request, \App\Models\ShortLink $path)
+    public function update(Request $request, ShortLink $path)
     {
-        if ((int)$path->user_id !== (int)auth()->id()) {
+        if (! $path->ownerMatches((int) auth()->id())) {
             abort(403);
         }
 

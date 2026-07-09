@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\UserGoogleToken;
+use Google\Service\Drive;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
 
@@ -13,7 +14,10 @@ class GoogleAuthController extends Controller
     public function redirect()
     {
         return Socialite::driver('google')
-            ->scopes(['https://www.googleapis.com/auth/drive.file'])
+            ->scopes([
+                Drive::DRIVE_FILE,
+                Drive::DRIVE_METADATA,
+            ])
             ->with(['access_type' => 'offline', 'prompt' => 'consent select_account'])
             ->redirect();
     }
@@ -62,6 +66,13 @@ class GoogleAuthController extends Controller
             $user = User::where('email', $googleUser->email)->first();
 
             if (!$user) {
+                if (!config('app.auth_bridge.allow_google_user_autocreate', true)) {
+                    return redirect()->route('login')->with(
+                        'error',
+                        'Akun Anda belum tersedia di Q-Space. Silakan gunakan atau sinkronkan akun dari Q-Link terlebih dahulu.'
+                    );
+                }
+
                 $user = User::create([
                     'name' => $googleUser->name,
                     'email' => $googleUser->email,
@@ -78,6 +89,12 @@ class GoogleAuthController extends Controller
                 if (!$user->email_verified_at) {
                     $user->update(['email_verified_at' => now()]);
                 }
+            }
+
+            if ((bool) $user->is_active === false) {
+                Auth::logout();
+
+                return redirect()->route('login')->with('error', 'Akun Anda dinonaktifkan. Hubungi admin Q-Link.');
             }
 
             Auth::login($user);

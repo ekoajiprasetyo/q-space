@@ -28,9 +28,9 @@ class FileRequestController extends Controller
         $user = Auth::user();
 
         // Check if teacher has connected Google Drive
-        $googleToken = UserGoogleToken::where('user_id', $user->id)->first();
+        $googleToken = UserGoogleToken::ownedByIdentity((int) $user->id)->first();
 
-        $query = FileRequest::where('teacher_id', $user->id);
+        $query = FileRequest::ownedByTeacherIdentity((int) $user->id);
 
         // Search
         if ($request->has('search') && $request->search) {
@@ -71,7 +71,7 @@ class FileRequestController extends Controller
         $user = Auth::user();
 
         // 1. Get Teacher's Google Token
-        $token = UserGoogleToken::where('user_id', $user->id)->first();
+        $token = UserGoogleToken::ownedByIdentity((int) $user->id)->first();
 
         if (!$token) {
             return redirect()->route('dashboard')->with('error', 'Please connect your Google Drive first.');
@@ -101,7 +101,7 @@ class FileRequestController extends Controller
 
             // 4. Save to Database
             FileRequest::create([
-                'teacher_id' => $user->id,
+                ...FileRequest::ownerAttributes((int) $user->id),
                 'title' => $request->title,
                 'slug' => Str::slug($request->title) . '-' . Str::random(6),
                 'description' => $request->description,
@@ -116,13 +116,23 @@ class FileRequestController extends Controller
             return redirect()->route('files.index')->with('success', 'File Request created and Drive folder ready!');
 
         } catch (\Exception $e) {
-            return back()->with('error', 'Failed to create Drive folder: ' . $e->getMessage());
+            Log::warning('Failed to create file request Drive folder', [
+                'user_id' => $user->id,
+                'google_token_id' => $token->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            $message = str_contains(strtolower($e->getMessage()), 'insufficient')
+                ? 'Google Drive terhubung, tetapi izinnya belum cukup. Silakan klik "Ganti Akun" atau hubungkan ulang Google Drive untuk memperbarui izin akses.'
+                : 'Failed to create Drive folder: ' . $e->getMessage();
+
+            return back()->with('error', $message)->withInput();
         }
     }
 
     public function destroy(FileRequest $fileRequest)
     {
-        if ((int)$fileRequest->teacher_id !== (int)Auth::id()) {
+        if (! $fileRequest->ownerMatches((int) Auth::id())) {
             abort(403);
         }
 
@@ -132,7 +142,7 @@ class FileRequestController extends Controller
         }
 
         // Get Token to delete from Drive
-        $token = UserGoogleToken::where('user_id', Auth::id())
+        $token = UserGoogleToken::ownedByIdentity((int) Auth::id())
             ->where('expires_at', '>', now())
             ->first();
 
@@ -152,7 +162,7 @@ class FileRequestController extends Controller
 
     public function destroySubmission(FileRequest $fileRequest, Request $request)
     {
-        if ((int)$fileRequest->teacher_id !== (int)Auth::id()) {
+        if (! $fileRequest->ownerMatches((int) Auth::id())) {
             abort(403);
         }
 
@@ -169,7 +179,7 @@ class FileRequestController extends Controller
         }
 
         // Get Token — tidak filter expires_at agar bisa auto-refresh
-        $token = UserGoogleToken::where('user_id', Auth::id())->first();
+        $token = UserGoogleToken::ownedByIdentity((int) Auth::id())->first();
 
         // Initialize Drive Service if we have token
         if ($token) {
@@ -228,7 +238,7 @@ class FileRequestController extends Controller
     public function toggleStatus(FileRequest $fileRequest)
     {
         // Ensure user owns this request
-        if ((int)$fileRequest->teacher_id !== (int)Auth::id()) {
+        if (! $fileRequest->ownerMatches((int) Auth::id())) {
             abort(403);
         }
 
@@ -244,7 +254,7 @@ class FileRequestController extends Controller
 
     public function show(FileRequest $fileRequest, Request $request)
     {
-        if ((int)$fileRequest->teacher_id !== (int)Auth::id()) {
+        if (! $fileRequest->ownerMatches((int) Auth::id())) {
             abort(403);
         }
 
@@ -309,7 +319,7 @@ class FileRequestController extends Controller
 
     public function retryUploadTask(FileRequest $fileRequest, UploadTask $uploadTask)
     {
-        if ((int)$fileRequest->teacher_id !== (int)Auth::id()) {
+        if (! $fileRequest->ownerMatches((int) Auth::id())) {
             abort(403);
         }
 
@@ -364,12 +374,6 @@ class FileRequestController extends Controller
                 ->with('error', 'Permintaan file ini sudah tidak aktif.');
         }
         
-        // Check Deadline
-        if ($fileRequest->deadline && now()->gt($fileRequest->deadline)) {
-            return redirect()->route('file-requests.upload', $slug)
-                ->with('error', 'Batas waktu pengumpulan telah berakhir.');
-        }
-
         $request->validate([
             'name'       => 'required|string|max:255',
             'class_name' => 'required|string|max:255',
@@ -379,7 +383,7 @@ class FileRequestController extends Controller
         ]);
 
         // Ambil token guru — tidak filter expires_at agar bisa auto-refresh
-        $token = UserGoogleToken::where('user_id', $fileRequest->teacher_id)->first();
+        $token = UserGoogleToken::ownedByIdentity($fileRequest->ownerIdentityId())->first();
 
         if (!$token) {
             return redirect()->route('file-requests.upload', $slug)
@@ -427,7 +431,7 @@ class FileRequestController extends Controller
 
                 $task = UploadTask::create([
                     'file_request_id' => $fileRequest->id,
-                    'teacher_id' => $fileRequest->teacher_id,
+                    ...UploadTask::ownerAttributes($fileRequest->ownerIdentityId()),
                     'submitter_name' => $request->name . ' (' . $request->class_name . ')',
                     'class_name' => $request->class_name,
                     'student_notes' => $request->notes,
@@ -465,6 +469,7 @@ class FileRequestController extends Controller
             Log::error('Public upload staging failed', [
                 'slug' => $slug,
                 'teacher_id' => $fileRequest->teacher_id,
+                'teacher_core_user_id' => $fileRequest->teacher_core_user_id,
                 'error' => $e->getMessage(),
             ]);
 

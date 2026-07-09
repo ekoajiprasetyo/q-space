@@ -1,4 +1,10 @@
 <x-guest-layout>
+    @if (!config('app.auth_bridge.allow_local_registration', true))
+        <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Registrasi lokal sedang dinonaktifkan. Silakan buat akun melalui
+            <a href="{{ config('app.q_link_master_url') }}/register" class="font-semibold underline" target="_blank" rel="noreferrer">Q-Link</a>.
+        </div>
+    @else
     <form method="POST" action="{{ route('register') }}">
         @csrf
 
@@ -49,4 +55,5 @@
             </x-primary-button>
         </div>
     </form>
+    @endif
 </x-guest-layout>

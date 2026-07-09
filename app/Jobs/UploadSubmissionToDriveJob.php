@@ -49,10 +49,16 @@ class UploadSubmissionToDriveJob implements ShouldQueue
             'last_error' => null,
         ]);
 
-        $token = UserGoogleToken::where('user_id', $task->teacher_id)->first();
+        $token = UserGoogleToken::ownedByIdentity($task->ownerIdentityId())->first();
         if (!$token) {
             throw new \RuntimeException('Google token for teacher not found.');
         }
+
+        $task->loadMissing('fileRequest');
+        $submittedAt = $task->queued_at ?? $task->created_at ?? now();
+        $isLateSubmission = $task->fileRequest?->deadline
+            ? $submittedAt->gt($task->fileRequest->deadline)
+            : false;
 
         $absolutePath = Storage::disk('local')->path($task->staged_path);
         if (!is_file($absolutePath)) {
@@ -78,7 +84,8 @@ class UploadSubmissionToDriveJob implements ShouldQueue
             'google_drive_url' => $driveFile['url'],
             'file_size' => $task->file_size,
             'mime_type' => $task->mime_type ?: 'application/octet-stream',
-            'submitted_at' => now(),
+            'status' => $isLateSubmission ? 'late' : 'submitted',
+            'submitted_at' => $submittedAt,
             'student_notes' => $task->student_notes,
         ]);
 

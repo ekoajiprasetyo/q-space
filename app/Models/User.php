@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\PostgresSchema;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -11,6 +12,17 @@ class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
+
+    public function getTable(): string
+    {
+        $table = parent::getTable();
+
+        if (!PostgresSchema::usesPgsql()) {
+            return $table;
+        }
+
+        return PostgresSchema::qualify(PostgresSchema::app(), $table);
+    }
 
     /**
      * The attributes that are mass assignable.
@@ -23,6 +35,15 @@ class User extends Authenticatable
         'password',
         'role',
         'google_id',
+        'avatar',
+        'nickname',
+        'grade',
+        'gender',
+        'student_id',
+        'is_active',
+        'last_session_id',
+        'subscription_status',
+        'subscription_expires_at',
     ];
 
     /**
@@ -45,6 +66,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
+            'subscription_expires_at' => 'datetime',
         ];
     }
 }

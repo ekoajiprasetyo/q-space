@@ -15,6 +15,11 @@ class PasswordController extends Controller
      */
     public function update(Request $request): RedirectResponse
     {
+        if (!config('app.auth_bridge.allow_local_identity_mutation', true)) {
+            return redirect()->away(config('app.q_link_master_url').'/forgot-password')
+                ->with('error', 'Pengelolaan password dipusatkan di Q-Link.');
+        }
+
         $validated = $request->validateWithBag('updatePassword', [
             'current_password' => ['required', 'current_password'],
             'password' => ['required', Password::defaults(), 'confirmed'],

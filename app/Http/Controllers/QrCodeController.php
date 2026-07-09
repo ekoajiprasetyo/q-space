@@ -11,12 +11,12 @@ class QrCodeController extends Controller
 {
     public function index()
     {
-        $dynamicQrs = ShortLink::where('user_id', Auth::id())
+        $dynamicQrs = ShortLink::ownedByIdentity((int) Auth::id())
             ->where('name', 'like', 'QR Dynamic -%')
             ->latest()
             ->get();
 
-        $textQrs = \App\Models\QrText::where('user_id', Auth::id())
+        $textQrs = \App\Models\QrText::ownedByIdentity((int) Auth::id())
             ->latest()
             ->get();
 
@@ -37,7 +37,7 @@ class QrCodeController extends Controller
         }
 
         ShortLink::create([
-            'user_id' => Auth::id(),
+            ...ShortLink::ownerAttributes((int) Auth::id()),
             'name' => 'QR Dynamic - ' . now()->format('d M Y H:i'),
             'original_url' => $request->url,
             'short_code' => $shortCode,

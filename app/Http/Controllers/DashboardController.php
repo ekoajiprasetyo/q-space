@@ -2,12 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use App\Models\FileRequest;
 use App\Models\FileSubmission;
 use App\Models\ShortLink;
-use App\Models\UserGoogleToken;
+use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
@@ -20,15 +18,18 @@ class DashboardController extends Controller
             return redirect()->route('welcome')->with('error', 'Akses Ditolak. Siswa tidak mempunyai akses ke halaman dashboard.'); 
         }
         
-        $filesCount = FileRequest::where('teacher_id', $user->id)->count();
-        $linksCount = ShortLink::where('user_id', $user->id)->count();
+        $ownedFileRequests = FileRequest::ownedByTeacherIdentity((int) $user->id);
+        $ownedShortLinks = ShortLink::ownedByIdentity((int) $user->id);
+
+        $filesCount = (clone $ownedFileRequests)->count();
+        $linksCount = (clone $ownedShortLinks)->count();
 
         // Statistics
-        $fileRequestIds = FileRequest::where('teacher_id', $user->id)->pluck('id');
+        $fileRequestIds = (clone $ownedFileRequests)->pluck('id');
 
         $totalSubmissions = FileSubmission::whereIn('file_request_id', $fileRequestIds)->count();
 
-        $totalVisits = ShortLink::where('user_id', $user->id)->sum('visits');
+        $totalVisits = (clone $ownedShortLinks)->sum('visits');
 
         $recentSubmissions = FileSubmission::whereIn('file_request_id', $fileRequestIds)
             ->with('fileRequest:id,title')
@@ -36,7 +37,7 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
 
-        $topLinks = ShortLink::where('user_id', $user->id)
+        $topLinks = (clone $ownedShortLinks)
             ->where('visits', '>', 0)
             ->orderByDesc('visits')
             ->take(5)

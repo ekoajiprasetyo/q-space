@@ -26,6 +26,12 @@ class AuthenticatedSessionController extends Controller
     {
         $request->authenticate();
 
+        if ((bool) $request->user()->is_active === false) {
+            Auth::guard('web')->logout();
+
+            return redirect()->route('login')->with('error', 'Akun Anda dinonaktifkan. Hubungi admin Q-Link.');
+        }
+
         $request->session()->regenerate();
 
         if ($request->user()->role === 'siswa') {

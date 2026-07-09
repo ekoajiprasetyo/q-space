@@ -19,7 +19,10 @@ class GoogleDriveService
         $this->client->setClientSecret(config('services.google.client_secret'));
         $this->client->setRedirectUri(config('services.google.redirect_uri'));
         $this->client->setAccessType('offline');
-        $this->client->addScope(Drive::DRIVE_FILE);
+        $this->client->setScopes([
+            Drive::DRIVE_FILE,
+            Drive::DRIVE_METADATA,
+        ]);
         $this->client->setHttpClient(new GuzzleClient([
             'timeout' => (int) config('services.google.request_timeout', 900),
             'connect_timeout' => (int) config('services.google.connect_timeout', 30),

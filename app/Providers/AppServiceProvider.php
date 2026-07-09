@@ -11,9 +11,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Fix untuk Hosting (dimana folder public dipisah ke public_html/space.q-link)
-        // Cek jika folder ../public_html/space.q-link ada, maka jadikan itu sebagai public path
-        $customPublicPath = base_path('../public_html/space.q-link');
+        $customPublicPath = env('APP_PUBLIC_PATH');
+
+        if (!$customPublicPath) {
+            // Legacy fallback for the older cPanel layout.
+            $legacyPublicPath = base_path('../public_html/space.q-link');
+            if (file_exists($legacyPublicPath)) {
+                $customPublicPath = $legacyPublicPath;
+            }
+        }
+
         if (file_exists($customPublicPath)) {
             $this->app->usePublicPath($customPublicPath);
         }

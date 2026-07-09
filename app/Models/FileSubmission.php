@@ -13,6 +13,7 @@ class FileSubmission extends Model
     protected $fillable = [
         'file_request_id',
         'student_id',
+        'student_core_student_id',
         'submitter_name',
         'original_filename',
         'google_drive_file_id',
@@ -37,5 +38,10 @@ class FileSubmission extends Model
     public function student(): BelongsTo
     {
         return $this->belongsTo(User::class, 'student_id');
+    }
+
+    public function studentCoreStudent(): BelongsTo
+    {
+        return $this->belongsTo(CoreStudent::class, 'student_core_student_id');
     }
 }

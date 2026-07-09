@@ -181,8 +181,8 @@
                                             <div class="flex items-center gap-2">
                                                 <h3 class="font-bold text-slate-800 text-base truncate">{{ $submitter }}</h3>
                                                 @php
-                                                    $isLate = false;
-                                                    if ($fileRequest->deadline) {
+                                                    $isLate = $files->contains(fn($f) => $f->status === 'late');
+                                                    if (!$isLate && $fileRequest->deadline) {
                                                         $submissionJakarta = $files->first()->submitted_at->copy()->setTimezone('Asia/Jakarta');
                                                         // Compare as strings to handle potential naive storage (UTC stored as literal Jakarta time)
                                                         if ($submissionJakarta->format('Y-m-d H:i:s') > $fileRequest->deadline->format('Y-m-d H:i:s')) {
@@ -279,8 +279,8 @@
                                     <div class="flex items-center gap-2 mb-0.5">
                                         <h3 class="font-bold text-slate-800 text-lg truncate" title="{{ $submitter }}">{{ $submitter }}</h3>
                                         @php
-                                            $isLateGrid = false;
-                                            if ($fileRequest->deadline) {
+                                            $isLateGrid = $files->contains(fn($f) => $f->status === 'late');
+                                            if (!$isLateGrid && $fileRequest->deadline) {
                                                 $submissionJakartaGrid = $files->first()->submitted_at->copy()->setTimezone('Asia/Jakarta');
                                                 if ($submissionJakartaGrid->format('Y-m-d H:i:s') > $fileRequest->deadline->format('Y-m-d H:i:s')) {
                                                     $isLateGrid = true;
