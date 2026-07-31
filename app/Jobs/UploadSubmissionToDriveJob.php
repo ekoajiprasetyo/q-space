@@ -47,6 +47,7 @@ class UploadSubmissionToDriveJob implements ShouldQueue
             'status' => 'processing',
             'attempts' => (int) $task->attempts + 1,
             'last_error' => null,
+            'upload_session_started_at' => $task->upload_session_started_at ?? now(),
         ]);
 
         $token = UserGoogleToken::ownedByIdentity($task->ownerIdentityId())->first();
@@ -66,12 +67,68 @@ class UploadSubmissionToDriveJob implements ShouldQueue
         }
 
         $googleDriveService->setAccessToken($token);
-        $driveFile = $googleDriveService->uploadLocalFile(
-            $absolutePath,
-            $task->student_folder_id,
-            $task->original_filename,
-            $task->mime_type ?: 'application/octet-stream'
-        );
+        $progressUpdater = function (?string $resumeUri, int $uploadedBytes) use ($task): void {
+            $currentUploadedBytes = (int) $task->uploaded_bytes;
+
+            if ($resumeUri === null && $uploadedBytes === $currentUploadedBytes) {
+                return;
+            }
+
+            $payload = [
+                'last_chunk_uploaded_at' => now(),
+            ];
+
+            if ($resumeUri !== null && $resumeUri !== $task->resumable_upload_uri) {
+                $payload['resumable_upload_uri'] = $resumeUri;
+                $task->resumable_upload_uri = $resumeUri;
+            }
+
+            if ($uploadedBytes !== $currentUploadedBytes) {
+                $payload['uploaded_bytes'] = $uploadedBytes;
+                $task->uploaded_bytes = $uploadedBytes;
+            }
+
+            $task->forceFill($payload)->save();
+        };
+
+        try {
+            $driveFile = $googleDriveService->uploadLocalFileResumable(
+                $absolutePath,
+                $task->student_folder_id,
+                $task->original_filename,
+                $task->mime_type ?: 'application/octet-stream',
+                $task->resumable_upload_uri,
+                $progressUpdater
+            );
+        } catch (\Throwable $resumeException) {
+            if (!$task->resumable_upload_uri) {
+                throw $resumeException;
+            }
+
+            Log::warning('Resumable upload session reset after failure', [
+                'upload_task_id' => $task->id,
+                'resume_uri_present' => true,
+                'error' => $resumeException->getMessage(),
+            ]);
+
+            $task->update([
+                'resumable_upload_uri' => null,
+                'uploaded_bytes' => 0,
+                'last_chunk_uploaded_at' => null,
+                'last_error' => null,
+            ]);
+
+            $task->refresh();
+
+            $driveFile = $googleDriveService->uploadLocalFileResumable(
+                $absolutePath,
+                $task->student_folder_id,
+                $task->original_filename,
+                $task->mime_type ?: 'application/octet-stream',
+                null,
+                $progressUpdater
+            );
+        }
 
         FileSubmission::updateOrCreate([
             'google_drive_file_id' => $driveFile['id'],
@@ -93,7 +150,10 @@ class UploadSubmissionToDriveJob implements ShouldQueue
             'status' => 'uploaded',
             'google_drive_file_id' => $driveFile['id'],
             'google_drive_url' => $driveFile['url'],
+            'resumable_upload_uri' => null,
+            'uploaded_bytes' => (int) $task->file_size,
             'processed_at' => now(),
+            'last_chunk_uploaded_at' => now(),
             'last_error' => null,
         ]);
 

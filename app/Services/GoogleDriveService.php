@@ -117,12 +117,37 @@ class GoogleDriveService
         );
     }
 
+    public function uploadLocalFileResumable(
+        string $absolutePath,
+        string $folderId,
+        string $customName,
+        ?string $mimeType = null,
+        ?string $resumeUri = null,
+        ?callable $progressCallback = null
+    ): array {
+        if (!is_file($absolutePath)) {
+            throw new \RuntimeException('Upload source file not found: ' . $absolutePath);
+        }
+
+        return $this->uploadFromPath(
+            $absolutePath,
+            $folderId,
+            $customName,
+            $mimeType ?: (mime_content_type($absolutePath) ?: 'application/octet-stream'),
+            (int) filesize($absolutePath),
+            $resumeUri,
+            $progressCallback
+        );
+    }
+
     protected function uploadFromPath(
         string $filePath,
         string $folderId,
         string $fileName,
         string $mimeType,
-        int $fileSize
+        int $fileSize,
+        ?string $resumeUri = null,
+        ?callable $progressCallback = null
     ): array {
         $fileMetadata = new Drive\DriveFile([
             'name' => $fileName,
@@ -158,12 +183,29 @@ class GoogleDriveService
             );
             $media->setFileSize($fileSize);
 
+            if ($resumeUri) {
+                $resumeResult = $media->resume($resumeUri);
+                $this->reportUploadProgress($media, $progressCallback);
+
+                if ($resumeResult !== false) {
+                    return $this->normalizeUploadedFile($resumeResult, $fileSize);
+                }
+            } else {
+                $this->reportUploadProgress($media, $progressCallback);
+            }
+
+            $progress = $media->getProgress();
+            if ($progress > 0) {
+                fseek($handle, $progress);
+            }
+
             while (!$uploadedFile && !feof($handle)) {
                 $chunk = fread($handle, $chunkSize);
                 if ($chunk === false) {
                     throw new \RuntimeException('Failed to read file chunk.');
                 }
                 $uploadedFile = $media->nextChunk($chunk);
+                $this->reportUploadProgress($media, $progressCallback);
             }
         } finally {
             fclose($handle);
@@ -174,6 +216,11 @@ class GoogleDriveService
             throw new \RuntimeException('Google Drive upload did not complete.');
         }
 
+        return $this->normalizeUploadedFile($uploadedFile, $fileSize);
+    }
+
+    protected function normalizeUploadedFile(object $uploadedFile, int $fileSize): array
+    {
         return [
             'id' => $uploadedFile->id,
             'name' => $uploadedFile->name,
@@ -181,6 +228,19 @@ class GoogleDriveService
             'mimeType' => $uploadedFile->mimeType,
             'url' => $uploadedFile->webViewLink,
         ];
+    }
+
+    protected function reportUploadProgress(\Google\Http\MediaFileUpload $media, ?callable $progressCallback): void
+    {
+        if (!$progressCallback) {
+            return;
+        }
+
+        $progressCallback(
+            $media->getResumeUri(),
+            $media->getProgress(),
+            $media->getHttpResultCode()
+        );
     }
 
     public function deleteFile(string $fileId): void

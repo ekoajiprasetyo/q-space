@@ -86,7 +86,16 @@
                                         <p class="font-bold text-sm text-white">{{ $fileRequest->max_files }} File</p>
                                     </div>
                                 </div>
-                            </div>
+                                <div class="flex-1 flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                                    <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 1.343-3 3v1H8a2 2 0 00-2 2v1a2 2 0 002 2h8a2 2 0 002-2v-1a2 2 0 00-2-2h-1v-1c0-1.657-1.343-3-3-3z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Maks Ukuran</p>
+                                        <p class="font-bold text-sm text-white">{{ $fileRequest->max_file_size }} MB / file</p>
+                                    </div>
+                                </div>
+                             </div>
                         </div>
                     </div>
                     
@@ -140,7 +149,7 @@
                                 {{ (session('submission_details')['is_queued'] ?? false) ? 'Upload Diterima!' : 'Berhasil Terkirim!' }}
                             </h2>
                             <p class="text-slate-500 font-medium mb-10 max-w-sm">
-                                {{ (session('submission_details')['is_queued'] ?? false) ? 'File sudah diterima server dan sedang diproses ke Google Drive. Mohon tunggu beberapa saat.' : 'Tugas Anda telah berhasil diupload ke sistem kami.' }}
+                                {{ (session('submission_details')['is_queued'] ?? false) ? 'File sudah diterima server dan sedang diunggah ke Google Drive. Mohon tunggu beberapa saat.' : 'Tugas Anda telah berhasil diunggah ke sistem kami.' }}
                             </p>
 
                             <div class="w-full bg-slate-50 rounded-3xl p-8 mb-8 border border-slate-100/50 text-left">
@@ -243,10 +252,44 @@
                                 dragging: false,
                                 files: [], 
                                 maxFiles: {{ $fileRequest->max_files }},
+                                maxFileSizeBytes: {{ (int) $fileRequest->max_file_size * 1024 * 1024 }},
                                 notifications: [],
                                 uploadProgress: 0,
                                 uploadStatusText: 'Mempersiapkan upload...',
-                                _progressTimer: null,
+                                currentFileName: '',
+                                currentFileIndex: 0,
+                                currentFileTotal: 0,
+                                currentFileProgress: 0,
+                                currentFileUploadedBytes: 0,
+                                currentFileSize: 0,
+                                currentChunkIndex: 0,
+                                currentChunksTotal: 0,
+                                uploadSpeed: 0,
+                                estimatedSecondsRemaining: null,
+                                lastProgressAt: null,
+                                lastProgressBytes: 0,
+                                completionProgressTimer: null,
+                                beforeUnloadHandler: null,
+                                createBatchUrl: @js(route('file-requests.upload.chunk-batches.store', $fileRequest->slug)),
+                                createFileUrl: @js(route('file-requests.upload.chunk-files.store', $fileRequest->slug)),
+                                completeBatchUrlTemplate: @js(route('file-requests.upload.chunk-batches.finish', ['slug' => $fileRequest->slug, 'batchId' => '__BATCH__'])),
+                                completeFileUrlTemplate: @js(route('file-requests.upload.chunk-files.complete', ['slug' => $fileRequest->slug, 'uploadId' => '__UPLOAD__'])),
+                                chunkUploadUrlTemplate: @js(route('file-requests.upload.chunk-files.chunks.store', ['slug' => $fileRequest->slug, 'uploadId' => '__UPLOAD__'])),
+                                csrfToken: document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '',
+
+                                init() {
+                                    this.beforeUnloadHandler = (event) => {
+                                        if (!this.isUploading) {
+                                            return;
+                                        }
+
+                                        event.preventDefault();
+                                        event.returnValue = '';
+                                        return '';
+                                    };
+
+                                    window.addEventListener('beforeunload', this.beforeUnloadHandler);
+                                },
                                 
                                 addNotification(message, type = 'error') {
                                     const id = Date.now();
@@ -278,6 +321,13 @@
                                 processFiles(newFiles) {
                                     const currentFiles = this.files;
                                     const allFiles = [...currentFiles, ...newFiles];
+                                    const oversizedFile = allFiles.find(file => file.size > this.maxFileSizeBytes);
+
+                                    if (oversizedFile) {
+                                        const maxMb = Math.max(1, Math.round(this.maxFileSizeBytes / 1024 / 1024));
+                                        this.addNotification(`File ${oversizedFile.name} melebihi batas ${maxMb} MB per file.`, 'error');
+                                        return;
+                                    }
                                     
                                     const uniqueMap = new Map();
                                     allFiles.forEach(f => {
@@ -335,8 +385,261 @@
 
                                     tick();
                                 }
+                                ,
+                                humanSize(bytes) {
+                                    if (!Number.isFinite(bytes) || bytes <= 0) {
+                                        return '0 B';
+                                    }
+
+                                    const units = ['B', 'KB', 'MB', 'GB'];
+                                    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+                                    const value = bytes / Math.pow(1024, exponent);
+                                    return `${value.toFixed(exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+                                },
+
+                                humanDuration(seconds) {
+                                    if (!Number.isFinite(seconds) || seconds < 1) {
+                                        return 'kurang dari 1 menit';
+                                    }
+
+                                    const roundedSeconds = Math.ceil(seconds);
+                                    if (roundedSeconds < 60) {
+                                        return `${roundedSeconds} detik`;
+                                    }
+
+                                    const minutes = Math.floor(roundedSeconds / 60);
+                                    const remainingSeconds = roundedSeconds % 60;
+                                    return remainingSeconds > 0 ? `${minutes} mnt ${remainingSeconds} dtk` : `${minutes} menit`;
+                                },
+
+                                beginFileProgress(file, index, totalFiles, totalChunks) {
+                                    this.currentFileName = file.name;
+                                    this.currentFileIndex = index + 1;
+                                    this.currentFileTotal = totalFiles;
+                                    this.currentFileProgress = 0;
+                                    this.currentFileUploadedBytes = 0;
+                                    this.currentFileSize = file.size;
+                                    this.currentChunkIndex = 0;
+                                    this.currentChunksTotal = totalChunks;
+                                },
+
+                                updateRealProgress(uploadedBytes, totalBytes, label) {
+                                    this.uploadProgress = totalBytes > 0
+                                        ? Math.min(90, Math.max(0, Math.round((uploadedBytes / totalBytes) * 90)))
+                                        : 0;
+                                    this.uploadStatusText = label;
+
+                                    const now = Date.now();
+                                    if (this.lastProgressAt !== null && now > this.lastProgressAt) {
+                                        const bytesDelta = uploadedBytes - this.lastProgressBytes;
+                                        const secondsDelta = (now - this.lastProgressAt) / 1000;
+
+                                        if (bytesDelta >= 0 && secondsDelta > 0) {
+                                            this.uploadSpeed = bytesDelta / secondsDelta;
+                                            this.estimatedSecondsRemaining = this.uploadSpeed > 0
+                                                ? Math.max(0, (totalBytes - uploadedBytes) / this.uploadSpeed)
+                                                : null;
+                                        }
+                                    }
+
+                                    this.lastProgressAt = now;
+                                    this.lastProgressBytes = uploadedBytes;
+                                },
+
+                                startCompletionProgress() {
+                                    this.stopCompletionProgress();
+                                    this.uploadProgress = Math.max(this.uploadProgress, 91);
+                                    this.completionProgressTimer = window.setInterval(() => {
+                                        if (!this.isUploading || this.uploadProgress >= 98) {
+                                            this.stopCompletionProgress();
+                                            return;
+                                        }
+
+                                        this.uploadProgress += 1;
+                                    }, 900);
+                                },
+
+                                stopCompletionProgress() {
+                                    if (this.completionProgressTimer) {
+                                        window.clearInterval(this.completionProgressTimer);
+                                        this.completionProgressTimer = null;
+                                    }
+                                },
+
+                                async postJson(url, payload) {
+                                    const response = await fetch(url, {
+                                        method: 'POST',
+                                        credentials: 'same-origin',
+                                        headers: {
+                                            'Accept': 'application/json',
+                                            'Content-Type': 'application/json',
+                                            'X-CSRF-TOKEN': this.csrfToken,
+                                        },
+                                        body: JSON.stringify(payload),
+                                    });
+
+                                    const data = await response.json().catch(() => ({}));
+                                    if (!response.ok) {
+                                        throw new Error(data.message || 'Permintaan upload gagal diproses.');
+                                    }
+
+                                    return data;
+                                },
+
+                                async postChunk(url, formData) {
+                                    const response = await fetch(url, {
+                                        method: 'POST',
+                                        credentials: 'same-origin',
+                                        headers: {
+                                            'Accept': 'application/json',
+                                            'X-CSRF-TOKEN': this.csrfToken,
+                                        },
+                                        body: formData,
+                                    });
+
+                                    const data = await response.json().catch(() => ({}));
+                                    if (!response.ok) {
+                                        throw new Error(data.message || 'Gagal mengirim bagian file ke server.');
+                                    }
+
+                                    return data;
+                                },
+
+                                async uploadChunkWithRetry(url, formData, retries = 3) {
+                                    for (let attempt = 1; attempt <= retries; attempt++) {
+                                        try {
+                                            return await this.postChunk(url, formData);
+                                        } catch (error) {
+                                            if (attempt === retries) {
+                                                throw error;
+                                            }
+
+                                            this.uploadStatusText = `Koneksi terputus, mencoba ulang bagian file (${attempt}/${retries - 1})...`;
+                                            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                                        }
+                                    }
+                                },
+
+                                async submitChunkedUpload() {
+                                    if (this.files.length === 0) {
+                                        this.addNotification('Pilih minimal satu file sebelum mengirim.', 'error');
+                                        return;
+                                    }
+
+                                    const name = document.getElementById('name')?.value?.trim() || '';
+                                    const className = document.getElementById('class_name')?.value?.trim() || '';
+                                    const notes = document.getElementById('notes')?.value || '';
+
+                                    if (!name || !className) {
+                                        this.addNotification('Nama dan kelas wajib diisi terlebih dahulu.', 'error');
+                                        return;
+                                    }
+
+                                    this.isUploading = true;
+                                    this.uploadProgress = 0;
+                                    this.uploadSpeed = 0;
+                                    this.estimatedSecondsRemaining = null;
+                                    this.lastProgressAt = null;
+                                    this.lastProgressBytes = 0;
+                                    const totalBytes = this.files.reduce((sum, file) => sum + file.size, 0);
+                                    let uploadedBytes = 0;
+
+                                    try {
+                                        this.uploadStatusText = `Menyiapkan ${this.files.length} file (${this.humanSize(totalBytes)})...`;
+
+                                        const batch = await this.postJson(this.createBatchUrl, {
+                                            name,
+                                            class_name: className,
+                                            notes,
+                                            file_count: this.files.length,
+                                        });
+
+                                        for (const [fileIndex, file] of this.files.entries()) {
+                                            this.uploadStatusText = `Menyiapkan ${file.name}...`;
+
+                                            const fileSession = await this.postJson(this.createFileUrl, {
+                                                batch_id: batch.batch_id,
+                                                file_name: file.name,
+                                                file_size: file.size,
+                                                mime_type: file.type || 'application/octet-stream',
+                                            });
+
+                                            const chunkSize = fileSession.chunk_size;
+                                            const totalChunks = fileSession.total_chunks;
+                                            this.beginFileProgress(file, fileIndex, this.files.length, totalChunks);
+
+                                            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                                                const start = chunkIndex * chunkSize;
+                                                const end = Math.min(file.size, start + chunkSize);
+                                                const chunk = file.slice(start, end);
+                                                const chunkFormData = new FormData();
+                                                chunkFormData.append('batch_id', batch.batch_id);
+                                                chunkFormData.append('chunk_index', String(chunkIndex));
+                                                chunkFormData.append('total_chunks', String(totalChunks));
+                                                chunkFormData.append('uploaded_chunk', chunk, `${file.name}.part`);
+
+                                                this.currentChunkIndex = chunkIndex + 1;
+
+                                                this.updateRealProgress(
+                                                    uploadedBytes + start,
+                                                    totalBytes,
+                                                    `Mengunggah ${file.name} (${chunkIndex + 1}/${totalChunks})...`
+                                                );
+
+                                                await this.uploadChunkWithRetry(
+                                                    this.chunkUploadUrlTemplate.replace('__UPLOAD__', fileSession.upload_id),
+                                                    chunkFormData
+                                                );
+
+                                                uploadedBytes += chunk.size;
+                                                this.currentFileUploadedBytes += chunk.size;
+                                                this.currentFileProgress = file.size > 0
+                                                    ? Math.min(100, Math.round((this.currentFileUploadedBytes / file.size) * 100))
+                                                    : 100;
+                                                this.updateRealProgress(
+                                                    uploadedBytes,
+                                                    totalBytes,
+                                                    `Mengunggah ${file.name} (${chunkIndex + 1}/${totalChunks})...`
+                                                );
+                                            }
+
+                                            if (fileIndex === this.files.length - 1) {
+                                                this.startCompletionProgress();
+                                            }
+
+                                            this.uploadStatusText = `Menyusun ${file.name} di server...`;
+                                            await this.postJson(
+                                                this.completeFileUrlTemplate.replace('__UPLOAD__', fileSession.upload_id),
+                                                { batch_id: batch.batch_id }
+                                            );
+                                        }
+
+                                        this.uploadStatusText = 'Menyelesaikan upload dan menyiapkan Google Drive...';
+
+                                        const finish = await this.postJson(
+                                            this.completeBatchUrlTemplate.replace('__BATCH__', batch.batch_id),
+                                            {}
+                                        );
+
+                                        // The file is safely staged on the server, so navigation must not trigger a leave-page warning.
+                                        this.stopCompletionProgress();
+                                        this.uploadProgress = 100;
+                                        this.currentChunkIndex = this.currentChunksTotal;
+                                        this.currentFileProgress = 100;
+                                        this.estimatedSecondsRemaining = null;
+                                        this.isUploading = false;
+                                        window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+                                        window.location.assign(finish.redirect_url);
+                                    } catch (error) {
+                                        this.stopCompletionProgress();
+                                        this.isUploading = false;
+                                        this.uploadProgress = 0;
+                                        this.uploadStatusText = 'Mempersiapkan upload...';
+                                        this.addNotification(error.message || 'Upload file besar gagal diproses.', 'error');
+                                    }
+                                }
                             }" 
-                            @submit="isUploading = true; startSimulatedProgress();">
+                            @submit.prevent="submitChunkedUpload()">
                             @csrf
                             
                             <!-- Toast Notifications -->
@@ -535,15 +838,15 @@
                                     x-transition:leave="transition ease-in duration-200"
                                     x-transition:leave-start="opacity-100"
                                     x-transition:leave-end="opacity-0"
-                                    class="fixed inset-0 z-[9999] flex items-center justify-center p-6"
+                                    class="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6"
                                     style="display: none;">
                                     <!-- Backdrop blur -->
                                     <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-md"></div>
 
                                     <!-- Card -->
-                                    <div class="relative z-10 w-full max-w-md bg-white rounded-[2rem] shadow-2xl p-10 flex flex-col items-center text-center">
+                                    <div class="relative z-10 flex w-full max-w-sm flex-col items-center overflow-hidden rounded-3xl bg-white px-6 py-8 text-center shadow-2xl sm:px-8 sm:py-9">
                                         <!-- Animated Icon -->
-                                        <div class="relative w-24 h-24 mb-8">
+                                        <div class="relative w-20 h-20 mb-5">
                                             <!-- Outer ring -->
                                             <svg class="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
                                                 <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" stroke-width="8"/>
@@ -563,12 +866,12 @@
                                             <!-- Inner icon -->
                                             <div class="absolute inset-0 flex items-center justify-center">
                                                 <template x-if="uploadProgress < 100">
-                                                    <svg class="w-9 h-9 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                                                     </svg>
                                                 </template>
                                                 <template x-if="uploadProgress >= 100">
-                                                    <svg class="w-9 h-9 text-indigo-500 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg class="w-8 h-8 text-indigo-500 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                                                     </svg>
                                                 </template>
@@ -576,25 +879,14 @@
                                         </div>
 
                                         <!-- Percentage -->
-                                        <div class="mb-2">
-                                            <span class="text-5xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent" x-text="uploadProgress + '%'"></span>
+                                        <div class="mb-3">
+                                            <span class="text-4xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent" x-text="uploadProgress + '%'"></span>
                                         </div>
 
-                                        <!-- Status Text -->
-                                        <p class="text-slate-500 font-medium text-sm mb-8 min-h-[40px]" x-text="uploadStatusText"></p>
+                                        <p class="w-full truncate text-sm font-bold text-slate-700" x-text="currentFileName || uploadStatusText"></p>
 
-                                        <!-- Progress Bar -->
-                                        <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-                                            <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 ease-out relative overflow-hidden"
-                                                :style="'width: ' + uploadProgress + '%'">
-                                                <!-- Shimmer effect -->
-                                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
-                                            </div>
-                                        </div>
-
-                                        <!-- File counter -->
-                                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mt-4">
-                                            <span x-text="files.length"></span> file sedang diupload ke Google Drive
+                                        <p class="mt-5 rounded-xl bg-amber-50 px-4 py-3 text-xs font-medium leading-relaxed text-amber-800">
+                                            Jangan tutup atau muat ulang halaman ini sampai upload selesai.
                                         </p>
                                     </div>
                                 </div>

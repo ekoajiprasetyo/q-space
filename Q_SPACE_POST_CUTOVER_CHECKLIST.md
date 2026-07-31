@@ -22,10 +22,11 @@ Tanggal keputusan: `2026-07-09`
 ## 2. Kunci boundary identitas
 
 - [ ] Pastikan `AUTH_ALLOW_LOCAL_REGISTRATION=false`.
-- [ ] Pastikan `AUTH_ALLOW_GOOGLE_USER_AUTOCREATE=false`.
 - [ ] Pastikan `AUTH_ALLOW_LOCAL_IDENTITY_MUTATION=false`.
-- [ ] Pastikan `q_space.users` hanya disinkron dari `core.users`.
+- [ ] Pastikan model auth Q-Space membaca `core.users`.
+- [ ] Pastikan tabel `q_space.users` sudah tidak ada.
 - [ ] Pastikan tidak ada flow produksi yang membuat user lokal liar lagi.
+- [ ] Pastikan OAuth Google Q-Space hanya dipakai untuk menghubungkan Google Drive.
 
 ## 3. Audit environment produksi
 
@@ -42,11 +43,11 @@ Tanggal keputusan: `2026-07-09`
 
 ## 4. Audit database live
 
-- [ ] Jalankan `php artisan qspace:phase1-status`.
+- [ ] Jalankan `php artisan qspace:identity-status`.
 - [ ] Pastikan schema `q_space` lengkap.
-- [ ] Pastikan `q_space.users` terisi dari `core.users`.
-- [ ] Pastikan hasil coverage `0/0` pada tabel domain dipahami sebagai normal bila histori memang tidak diimport.
-- [ ] Pastikan orphan audit tidak menunjukkan anomali baru.
+- [ ] Pastikan seluruh foreign key identity mengarah ke `core.users` atau `core.students`.
+- [ ] Pastikan kolom bridge transisi sudah dihapus.
+- [ ] Pastikan backup pre-cutover dapat dibaca dan checksum-nya tersimpan.
 
 ## 5. Smoke test fungsional final
 
@@ -80,9 +81,9 @@ Referensi runbook:
 
 ## 8. Arah fase berikutnya
 
-- [ ] Audit controller/query yang masih terlalu bergantung pada `User` lokal.
-- [ ] Prioritaskan refactor bertahap ke relation `core.users` dan `core.students`.
-- [ ] Evaluasi kapan `q_space.users` bisa dikecilkan perannya atau dipensiunkan.
+- [ ] Pantau error autentikasi dan foreign key setelah cutover.
+- [ ] Uji hard-delete akun hanya melalui prosedur yang menangani data domain lintas aplikasi.
+- [ ] Hapus backup shadow setelah masa retensi dan verifikasi pemulihan selesai.
 
 ## Definisi Selesai
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\PostgresSchema;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,7 +26,7 @@ class NewPasswordController extends Controller
      */
     public function create(Request $request): View|RedirectResponse
     {
-        if (!config('app.auth_bridge.allow_local_identity_mutation', true)) {
+        if (PostgresSchema::usesPgsql() || ! config('app.auth_bridge.allow_local_identity_mutation', true)) {
             return $this->redirectToMasterForgotPassword();
         }
 
@@ -39,7 +40,7 @@ class NewPasswordController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        if (!config('app.auth_bridge.allow_local_identity_mutation', true)) {
+        if (PostgresSchema::usesPgsql() || ! config('app.auth_bridge.allow_local_identity_mutation', true)) {
             return $this->redirectToMasterForgotPassword();
         }
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\PostgresSchema;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,8 +20,8 @@ class RegisteredUserController extends Controller
      */
     public function create(): View|RedirectResponse
     {
-        if (!config('app.auth_bridge.allow_local_registration', true)) {
-            return redirect()->away(config('app.q_link_master_url').'/register');
+        if (PostgresSchema::usesPgsql() || ! config('app.auth_bridge.allow_local_registration', true)) {
+            return redirect()->away($this->masterRegistrationUrl(request()));
         }
 
         return view('auth.register');
@@ -33,8 +34,8 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        if (!config('app.auth_bridge.allow_local_registration', true)) {
-            return redirect()->away(config('app.q_link_master_url').'/register');
+        if (PostgresSchema::usesPgsql() || ! config('app.auth_bridge.allow_local_registration', true)) {
+            return redirect()->away($this->masterRegistrationUrl($request));
         }
 
         $request->validate([
@@ -54,5 +55,19 @@ class RegisteredUserController extends Controller
         Auth::login($user);
 
         return redirect(route('dashboard', absolute: false));
+    }
+
+    /**
+     * Build the Q-Link registration URL while retaining Q-Space as the
+     * post-registration destination for teacher accounts.
+     */
+    private function masterRegistrationUrl(Request $request): string
+    {
+        $dashboardUrl = $request->getSchemeAndHttpHost().'/dashboard';
+
+        return config('app.q_link_master_url').'/register?'.http_build_query([
+            'role' => 'guru',
+            'redirect' => $dashboardUrl,
+        ]);
     }
 }

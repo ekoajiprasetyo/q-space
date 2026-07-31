@@ -2,9 +2,8 @@
 
 namespace App\Models;
 
-use App\Support\PostgresSchema;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -15,7 +14,6 @@ class UploadTask extends Model
     protected $fillable = [
         'file_request_id',
         'teacher_id',
-        'teacher_core_user_id',
         'submitter_name',
         'class_name',
         'student_notes',
@@ -29,11 +27,18 @@ class UploadTask extends Model
         'last_error',
         'google_drive_file_id',
         'google_drive_url',
+        'resumable_upload_uri',
+        'uploaded_bytes',
+        'upload_session_started_at',
+        'last_chunk_uploaded_at',
         'queued_at',
         'processed_at',
     ];
 
     protected $casts = [
+        'uploaded_bytes' => 'integer',
+        'upload_session_started_at' => 'datetime',
+        'last_chunk_uploaded_at' => 'datetime',
         'queued_at' => 'datetime',
         'processed_at' => 'datetime',
     ];
@@ -45,46 +50,21 @@ class UploadTask extends Model
 
     public function scopeOwnedByTeacherIdentity(Builder $query, int $identityId): Builder
     {
-        if (!PostgresSchema::usesPgsql()) {
-            return $query->where('teacher_id', $identityId);
-        }
-
-        return $query->where(function (Builder $builder) use ($identityId) {
-            $builder->where('teacher_core_user_id', $identityId)
-                ->orWhere(function (Builder $fallback) use ($identityId) {
-                    $fallback->whereNull('teacher_core_user_id')
-                        ->where('teacher_id', $identityId);
-                });
-        });
+        return $query->where('teacher_id', $identityId);
     }
 
     public function ownerMatches(int $identityId): bool
     {
-        if ($this->teacher_core_user_id !== null) {
-            return (int) $this->teacher_core_user_id === $identityId;
-        }
-
         return (int) $this->teacher_id === $identityId;
     }
 
     public static function ownerAttributes(int $identityId): array
     {
-        $attributes = ['teacher_id' => $identityId];
-
-        if (PostgresSchema::usesPgsql()) {
-            $attributes['teacher_core_user_id'] = $identityId;
-        }
-
-        return $attributes;
+        return ['teacher_id' => $identityId];
     }
 
     public function ownerIdentityId(): int
     {
-        return (int) ($this->teacher_core_user_id ?? $this->teacher_id);
-    }
-
-    public function teacherCoreUser(): BelongsTo
-    {
-        return $this->belongsTo(CoreUser::class, 'teacher_core_user_id');
+        return (int) $this->teacher_id;
     }
 }
