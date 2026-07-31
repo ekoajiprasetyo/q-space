@@ -37,6 +37,28 @@
                 </button>
             </div>
         @endif
+
+        @if (!auth()->check() && (session()->has('qspace_pending_google_user_id') || request()->cookie('qspace_pending_google_user_id')))
+            <div
+                x-show="notification"
+                x-transition:enter="transition ease-out duration-300"
+                x-transition:enter-start="opacity-0 translate-y-2"
+                x-transition:enter-end="opacity-100 translate-y-0"
+                class="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-xl bg-amber-50 border border-amber-200 shadow-xl rounded-2xl px-5 py-4 flex items-start gap-4"
+                role="status"
+            >
+                <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M10.29 3.86l-8.82 15.27A1 1 0 002.34 20h19.32a1 1 0 00.87-1.5L13.71 3.86a1 1 0 00-1.42 0z" /></svg>
+                </div>
+                <div class="pr-8">
+                    <h4 class="font-bold text-amber-900">Pendaftaran Berhasil</h4>
+                    <p class="text-sm text-amber-800 mt-1">Akun Guru Anda sedang menunggu verifikasi Admin. Setelah diverifikasi, refresh halaman ini untuk masuk ke dashboard Q-Space.</p>
+                </div>
+                <button @click="notification = false" class="absolute top-4 right-4 text-amber-500 hover:text-amber-700" aria-label="Tutup notifikasi">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+        @endif
         
         <!-- Navbar -->
         <nav class="fixed w-full z-50 transition-all duration-300 bg-white/90 backdrop-blur-md border-b border-gray-200/50">
@@ -58,7 +80,7 @@
                     </div>
                     <div class="flex items-center space-x-4">
                         @if (Route::has('login'))
-                            @if(auth()->check() && in_array(auth()->user()->role, ['guru', 'admin']))
+                            @if(auth()->check() && in_array(auth()->user()->role, ['guru', 'admin']) && (auth()->user()->role === 'admin' || auth()->user()->is_active))
                                 <a href="{{ url('/dashboard') }}" class="px-6 py-2.5 text-sm font-bold text-white bg-teal-600 rounded-full hover:bg-teal-700 transition-all shadow-md shadow-teal-100">Dashboard</a>
                             @elseif(auth()->check())
                                 <!-- Student (Logged In): Click triggers bounce back with error -->
@@ -70,7 +92,7 @@
 
                                 <a href="https://q-link.my.id/login?redirect=https://space.q-link.my.id/dashboard" class="hidden md:inline-block text-sm font-bold text-gray-600 hover:text-teal-600 transition-colors">Masuk</a>
 
-                                <a href="https://q-link.my.id/register?role=guru" class="hidden md:inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-full shadow-md shadow-teal-100 hover:-translate-y-0.5 transition-all">
+                                <a href="{{ route('register') }}" class="hidden md:inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-full shadow-md shadow-teal-100 hover:-translate-y-0.5 transition-all">
                                     Daftar Sekarang
                                 </a>
                             @endif
@@ -106,7 +128,7 @@
                         </p>
 
                         <div class="flex flex-col sm:flex-row gap-4 w-full">
-                            <a href="https://q-link.my.id/register?role=guru" class="inline-flex justify-center items-center px-8 py-4 text-base font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-full shadow-xl shadow-teal-200 hover:-translate-y-1 transition-all w-full sm:w-auto">
+                            <a href="{{ route('register') }}" class="inline-flex justify-center items-center px-8 py-4 text-base font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-full shadow-xl shadow-teal-200 hover:-translate-y-1 transition-all w-full sm:w-auto">
                                 Buat Akun
                             </a>
                             <a href="#features" class="inline-flex justify-center items-center px-8 py-4 text-base font-bold text-gray-700 bg-white border border-gray-200 rounded-full hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all hover:-translate-y-1 w-full sm:w-auto">

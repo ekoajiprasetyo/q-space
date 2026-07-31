@@ -10,14 +10,16 @@ class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_login_screen_can_be_rendered(): void
+    public function test_login_is_centralized_in_q_link(): void
     {
         $response = $this->get('/login');
 
-        $response->assertStatus(200);
+        $response->assertRedirect(
+            'https://q-link.my.id/login?redirect='.urlencode('http://space.q-link.my.id/dashboard')
+        );
     }
 
-    public function test_users_can_authenticate_using_the_login_screen(): void
+    public function test_login_post_cannot_authenticate_against_q_space(): void
     {
         $user = User::factory()->create();
 
@@ -26,20 +28,10 @@ class AuthenticationTest extends TestCase
             'password' => 'password',
         ]);
 
-        $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
-    }
-
-    public function test_users_can_not_authenticate_with_invalid_password(): void
-    {
-        $user = User::factory()->create();
-
-        $this->post('/login', [
-            'email' => $user->email,
-            'password' => 'wrong-password',
-        ]);
-
         $this->assertGuest();
+        $response->assertRedirect(
+            'https://q-link.my.id/login?redirect='.urlencode('http://space.q-link.my.id/dashboard')
+        );
     }
 
     public function test_users_can_logout(): void

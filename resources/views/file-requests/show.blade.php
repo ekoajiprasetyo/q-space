@@ -5,22 +5,63 @@
         deleteSubmitterName: '',
         deleteActionUrl: '', 
         queueRunnerUrl: @js($queueRunnerUrl ?? null),
+        uploadStatusUrl: @js(route('file-requests.upload-status', $fileRequest)),
+        hasPendingUploads: @js((int) ($uploadTaskSummary->pending_count ?? 0) > 0),
+        taskProgress: {},
+        queueRequestInFlight: false,
+        statusRefreshInFlight: false,
+        statusPollTimer: null,
+        init() {
+            if (!this.hasPendingUploads) return;
+            this.refreshUploadStatus();
+            this.statusPollTimer = window.setInterval(() => this.refreshUploadStatus(), 4000);
+        },
         setView(val) { 
             this.view = val; 
             localStorage.setItem('file_request_view_mode', val); 
         },
-        async runQueueOnce() {
-            if (!this.queueRunnerUrl) return;
+        runQueueOnce() {
+            if (!this.queueRunnerUrl || this.queueRequestInFlight) return;
+            this.queueRequestInFlight = true;
+            fetch(this.queueRunnerUrl, { method: 'GET', credentials: 'same-origin' })
+                .catch(() => {})
+                .finally(() => { this.queueRequestInFlight = false; });
+        },
+        async refreshUploadStatus() {
+            if (this.statusRefreshInFlight) return;
+            this.statusRefreshInFlight = true;
+            this.runQueueOnce();
             try {
-                await fetch(this.queueRunnerUrl, { method: 'GET', keepalive: true, credentials: 'same-origin' });
-            } catch (_) {}
+                const response = await fetch(this.uploadStatusUrl, {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) return;
+                const payload = await response.json();
+                this.taskProgress = payload.tasks || {};
+                if (payload.pending_count === 0) {
+                    window.clearInterval(this.statusPollTimer);
+                    window.setTimeout(() => window.location.reload(), 700);
+                }
+            } catch (_) {
+                // Keep the current UI visible and retry on the next polling cycle.
+            } finally {
+                this.statusRefreshInFlight = false;
+            }
+        },
+        taskPercent(taskId, fallback) {
+            return this.taskProgress[taskId]?.progress_percent ?? fallback;
+        },
+        taskMegabytes(taskId, fallbackBytes) {
+            const bytes = this.taskProgress[taskId]?.uploaded_bytes ?? fallbackBytes;
+            return (bytes / 1048576).toFixed(2);
         },
         confirmDeleteSubmission(url, name) {
             this.deleteActionUrl = url;
             this.deleteSubmitterName = name;
             this.deleteSubmissionModalOpen = true;
         }
-    }" x-init="setTimeout(() => runQueueOnce(), 500)"
+    }"
     class="pt-4 pb-20 max-w-7xl mx-auto sm:px-6 lg:px-8 relative isolate">
         
         <!-- Background Decor (Dashboard Style) -->
@@ -97,13 +138,13 @@
         @if($pendingCount > 0 || $failedCount > 0)
             <div class="mb-6 mx-4 sm:mx-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 flex flex-wrap gap-3 items-center">
                 @if($pendingCount > 0)
-                    <span class="px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold">
-                        {{ $pendingCount }} file sedang diproses ke Google Drive
+                    <span class="px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-sm font-bold text-amber-700">
+                        {{ $pendingCount }} file sedang diunggah ke Google Drive - progres diperbarui otomatis
                     </span>
                 @endif
                 @if($failedCount > 0)
                     <span class="px-3 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
-                        {{ $failedCount }} file gagal upload - perlu retry
+                        {{ $failedCount }} file gagal diunggah - siap dicoba lagi
                     </span>
                 @endif
             </div>
@@ -111,27 +152,43 @@
 
         @if(isset($orphanUploadTasks) && $orphanUploadTasks->count() > 0)
             <div class="mb-6 mx-4 sm:mx-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
-                <p class="text-sm font-bold text-slate-700 mb-3">Upload Pending/Gagal (belum masuk daftar submission)</p>
+                <p class="text-base font-bold text-slate-700 mb-3">Upload yang Masih Menunggu atau Gagal</p>
                 <div class="space-y-2">
                     @foreach($orphanUploadTasks as $task)
                         <div class="flex flex-wrap items-center justify-between gap-3 border border-slate-100 rounded-xl px-3 py-2">
                             <div class="min-w-0">
-                                <p class="text-xs font-bold text-slate-700 truncate">{{ $task->submitter_name }} - {{ $task->original_filename }}</p>
-                                <p class="text-[11px] text-slate-500">
+                                <p class="text-sm font-bold text-slate-700 truncate">{{ $task->submitter_name }} - {{ $task->original_filename }}</p>
+                                <p class="text-xs text-slate-500">
                                     Status:
                                     <span class="font-bold {{ $task->status === 'failed' ? 'text-red-600' : 'text-amber-600' }}">
-                                        {{ strtoupper($task->status) }}
+                                        {{ $task->status === 'failed' ? 'Gagal diunggah' : ($task->status === 'processing' ? 'Sedang diunggah' : 'Menunggu diproses') }}
                                     </span>
                                     @if($task->last_error)
                                         - {{ \Illuminate\Support\Str::limit($task->last_error, 140) }}
                                     @endif
                                 </p>
+                                @php
+                                    $orphanProgressBytes = max(0, (int) ($task->uploaded_bytes ?? 0));
+                                    $orphanTotalBytes = max(1, (int) ($task->file_size ?? 0));
+                                    $orphanProgressPercent = max(0, min(100, (int) floor(($orphanProgressBytes / $orphanTotalBytes) * 100)));
+                                @endphp
+                                @if(in_array($task->status, ['queued', 'processing'], true))
+                                    <div class="mt-2">
+                                        <div class="flex items-center justify-between text-xs font-medium text-slate-500 mb-1">
+                                            <span><span x-text="taskMegabytes('{{ $task->id }}', {{ $orphanProgressBytes }})"></span> MB / {{ number_format($orphanTotalBytes / 1048576, 2) }} MB</span>
+                                            <span x-text="taskPercent('{{ $task->id }}', {{ $orphanProgressPercent }}) + '%'"></span>
+                                        </div>
+                                        <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                            <div class="h-full rounded-full {{ $task->status === 'processing' ? 'bg-amber-500' : 'bg-slate-300' }} transition-[width] duration-700 ease-out" :style="'width: ' + taskPercent('{{ $task->id }}', {{ $orphanProgressPercent }}) + '%'"></div>
+                                        </div>
+                                    </div>
+                                @endif
                             </div>
                             @if($task->status === 'failed')
                                 <form action="{{ route('file-requests.upload-tasks.retry', [$fileRequest, $task]) }}" method="POST">
                                     @csrf
-                                    <button type="submit" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-500 transition-colors">
-                                        Retry
+                                    <button type="submit" class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-500 transition-colors">
+                                        Coba Lagi
                                     </button>
                                 </form>
                             @endif
@@ -196,7 +253,7 @@
                                                     </span>
                                                 @endif
                                             </div>
-                                            <p class="text-xs font-medium text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                            <p class="text-sm font-medium text-slate-400 flex items-center gap-1.5 mt-0.5">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                                 {{ $files->first()->submitted_at->setTimezone('Asia/Jakarta')->translatedFormat('d M Y, H:i') }}
                                                 <span class="text-slate-300">&bull;</span>
@@ -213,12 +270,12 @@
                                             </span>
                                             @if($pendingTasksForSubmitter->count() > 0)
                                                 <span class="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-amber-200">
-                                                    {{ $pendingTasksForSubmitter->count() }} Processing
+                                                    {{ $pendingTasksForSubmitter->count() }} Sedang Diunggah
                                                 </span>
                                             @endif
                                             @if($failedTasksForSubmitter->count() > 0)
                                                 <span class="bg-red-50 text-red-700 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-red-200">
-                                                    {{ $failedTasksForSubmitter->count() }} Failed
+                                                    {{ $failedTasksForSubmitter->count() }} Gagal
                                                 </span>
                                             @endif
                                             
@@ -240,19 +297,60 @@
                                     <div class="bg-indigo-50/30 border-t border-indigo-50/50 p-5 sm:pl-20 sm:pr-8">
                                         @if($failedTasksForSubmitter->count() > 0)
                                             <div class="mb-4 p-3 rounded-xl bg-red-50 border border-red-200">
-                                                <p class="text-xs font-bold text-red-700 mb-2">Upload Gagal (perlu retry):</p>
+                                                <p class="text-sm font-bold text-red-700 mb-2">Upload Gagal:</p>
                                                 <div class="space-y-2">
                                                     @foreach($failedTasksForSubmitter as $failedTask)
                                                         <form action="{{ route('file-requests.upload-tasks.retry', [$fileRequest, $failedTask]) }}" method="POST" class="flex items-center justify-between gap-3 bg-white border border-red-100 rounded-lg px-3 py-2">
                                                             @csrf
                                                             <div class="min-w-0">
-                                                                <p class="text-xs font-bold text-slate-700 truncate">{{ $failedTask->original_filename }}</p>
-                                                                <p class="text-[11px] text-red-600 truncate">{{ $failedTask->last_error ?: 'Gagal upload ke Google Drive' }}</p>
+                                                                <p class="text-sm font-bold text-slate-700 truncate">{{ $failedTask->original_filename }}</p>
+                                                                <p class="text-xs text-red-600 truncate">{{ $failedTask->last_error ?: 'Gagal mengunggah file ke Google Drive' }}</p>
                                                             </div>
-                                                            <button type="submit" class="shrink-0 px-3 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-500 transition-colors">
-                                                                Retry
+                                                            <button type="submit" class="shrink-0 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-500 transition-colors">
+                                                                Coba Lagi
                                                             </button>
                                                         </form>
+                                                    @endforeach
+                                                </div>
+                                            </div>
+                                        @endif
+
+                                        @if($pendingTasksForSubmitter->count() > 0)
+                                            <div class="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                                                <p class="text-sm font-bold text-amber-800 mb-2">Upload Sedang Diproses:</p>
+                                                <div class="space-y-3">
+                                                    @foreach($pendingTasksForSubmitter as $pendingTask)
+                                                        @php
+                                                            $pendingProgressBytes = max(0, (int) ($pendingTask->uploaded_bytes ?? 0));
+                                                            $pendingTotalBytes = max(1, (int) ($pendingTask->file_size ?? 0));
+                                                            $pendingProgressPercent = max(0, min(100, (int) floor(($pendingProgressBytes / $pendingTotalBytes) * 100)));
+                                                        @endphp
+                                                        <div class="bg-white border border-amber-100 rounded-lg px-3 py-3">
+                                                            <div class="flex items-start justify-between gap-3">
+                                                                <div class="min-w-0">
+                                                                    <p class="text-sm font-bold text-slate-700 truncate">{{ $pendingTask->original_filename }}</p>
+                                                                    <p class="text-xs text-slate-500">
+                                                                        Status:
+                                                                        <span class="font-bold {{ $pendingTask->status === 'processing' ? 'text-amber-700' : 'text-slate-500' }}">
+                                                                            {{ $pendingTask->status === 'processing' ? 'Sedang diunggah' : 'Menunggu diproses' }}
+                                                                        </span>
+                                                                        @if($pendingTask->last_chunk_uploaded_at)
+                                                                            • update {{ $pendingTask->last_chunk_uploaded_at->diffForHumans() }}
+                                                                        @endif
+                                                                    </p>
+                                                                </div>
+                                                                <span class="shrink-0 text-xs font-bold text-amber-700" x-text="taskPercent('{{ $pendingTask->id }}', {{ $pendingProgressPercent }}) + '%'"></span>
+                                                            </div>
+                                                            <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                                <div class="h-full rounded-full {{ $pendingTask->status === 'processing' ? 'bg-amber-500' : 'bg-slate-300' }} transition-[width] duration-700 ease-out" :style="'width: ' + taskPercent('{{ $pendingTask->id }}', {{ $pendingProgressPercent }}) + '%'"></div>
+                                                            </div>
+                                                            <div class="mt-1 flex items-center justify-between text-xs text-slate-500">
+                                                                <span><span x-text="taskMegabytes('{{ $pendingTask->id }}', {{ $pendingProgressBytes }})"></span> MB / {{ number_format($pendingTotalBytes / 1048576, 2) }} MB</span>
+                                                                @if($pendingTask->resumable_upload_uri)
+                                                                    <span class="text-emerald-600 font-bold">lanjut otomatis aktif</span>
+                                                                @endif
+                                                            </div>
+                                                        </div>
                                                     @endforeach
                                                 </div>
                                             </div>
@@ -270,6 +368,18 @@
                 <!-- Grid View -->
                 <div x-show="view === 'grid'" style="display: none;" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     @foreach($submissions as $submitter => $files)
+                        @php
+                            $tasksForSubmitterGrid = $uploadTasks[$submitter] ?? collect();
+                            $pendingTasksForSubmitterGrid = $tasksForSubmitterGrid->whereIn('status', ['queued', 'processing']);
+                            $failedTasksForSubmitterGrid = $tasksForSubmitterGrid->where('status', 'failed');
+                            $isLateGrid = $files->contains(fn($f) => $f->status === 'late');
+                            if (!$isLateGrid && $fileRequest->deadline) {
+                                $submissionJakartaGrid = $files->first()->submitted_at->copy()->setTimezone('Asia/Jakarta');
+                                if ($submissionJakartaGrid->format('Y-m-d H:i:s') > $fileRequest->deadline->format('Y-m-d H:i:s')) {
+                                    $isLateGrid = true;
+                                }
+                            }
+                        @endphp
                         <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col h-full">
                             <div class="flex items-center gap-4 mb-6">
                                 <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-blue-500/20 shrink-0">
@@ -278,18 +388,24 @@
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center gap-2 mb-0.5">
                                         <h3 class="font-bold text-slate-800 text-lg truncate" title="{{ $submitter }}">{{ $submitter }}</h3>
-                                        @php
-                                            $isLateGrid = $files->contains(fn($f) => $f->status === 'late');
-                                            if (!$isLateGrid && $fileRequest->deadline) {
-                                                $submissionJakartaGrid = $files->first()->submitted_at->copy()->setTimezone('Asia/Jakarta');
-                                                if ($submissionJakartaGrid->format('Y-m-d H:i:s') > $fileRequest->deadline->format('Y-m-d H:i:s')) {
-                                                    $isLateGrid = true;
-                                                }
-                                            }
-                                        @endphp
                                         @if($isLateGrid)
                                             <span class="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 uppercase tracking-wide">
                                                 Terlambat
+                                            </span>
+                                        @endif
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                            {{ $files->count() }} File
+                                        </span>
+                                        @if($pendingTasksForSubmitterGrid->count() > 0)
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                {{ $pendingTasksForSubmitterGrid->count() }} Sedang Diunggah
+                                            </span>
+                                        @endif
+                                        @if($failedTasksForSubmitterGrid->count() > 0)
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
+                                                {{ $failedTasksForSubmitterGrid->count() }} Gagal
                                             </span>
                                         @endif
                                     </div>
@@ -299,18 +415,80 @@
                                     </div>
                                 </div>
                             </div>
-                            
-                                <div class="flex-1">
-                                    @include('file-requests.partials.file-list', ['files' => $files, 'compact' => true])
-                                </div>
 
-                                <div class="mt-4 pt-4 border-t border-slate-100 flex justify-end">
-                                    <button @click="confirmDeleteSubmission('{{ route('file-requests.submissions.destroy', $fileRequest) }}', '{{ $submitter }}')" 
-                                        class="flex items-center gap-2 text-red-400 hover:text-red-600 font-bold text-xs transition-colors">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                        Hapus Folder Siswa
-                                    </button>
+                            @if($pendingTasksForSubmitterGrid->count() > 0)
+                                <div class="mb-4 p-3 rounded-2xl bg-amber-50 border border-amber-200">
+                                    <p class="text-xs font-bold text-amber-800 mb-2">Upload Sedang Diproses</p>
+                                    <div class="space-y-3">
+                                        @foreach($pendingTasksForSubmitterGrid as $pendingTaskGrid)
+                                            @php
+                                                $pendingGridProgressBytes = max(0, (int) ($pendingTaskGrid->uploaded_bytes ?? 0));
+                                                $pendingGridTotalBytes = max(1, (int) ($pendingTaskGrid->file_size ?? 0));
+                                                $pendingGridProgressPercent = max(0, min(100, (int) floor(($pendingGridProgressBytes / $pendingGridTotalBytes) * 100)));
+                                            @endphp
+                                            <div class="bg-white border border-amber-100 rounded-xl px-3 py-3">
+                                                <div class="flex items-start justify-between gap-3">
+                                                    <div class="min-w-0">
+                                                        <p class="text-xs font-bold text-slate-700 truncate">{{ $pendingTaskGrid->original_filename }}</p>
+                                                        <p class="text-[11px] text-slate-500">
+                                                            <span class="font-bold {{ $pendingTaskGrid->status === 'processing' ? 'text-amber-700' : 'text-slate-500' }}">
+                                                                {{ $pendingTaskGrid->status === 'processing' ? 'Sedang diunggah' : 'Menunggu diproses' }}
+                                                            </span>
+                                                            @if($pendingTaskGrid->last_chunk_uploaded_at)
+                                                                • {{ $pendingTaskGrid->last_chunk_uploaded_at->diffForHumans() }}
+                                                            @endif
+                                                        </p>
+                                                    </div>
+                                                    <span class="shrink-0 text-[11px] font-bold text-amber-700" x-text="taskPercent('{{ $pendingTaskGrid->id }}', {{ $pendingGridProgressPercent }}) + '%'"></span>
+                                                </div>
+                                                <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                    <div class="h-full rounded-full {{ $pendingTaskGrid->status === 'processing' ? 'bg-amber-500' : 'bg-slate-300' }} transition-[width] duration-700 ease-out" :style="'width: ' + taskPercent('{{ $pendingTaskGrid->id }}', {{ $pendingGridProgressPercent }}) + '%'"></div>
+                                                </div>
+                                                <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                                                    <span><span x-text="taskMegabytes('{{ $pendingTaskGrid->id }}', {{ $pendingGridProgressBytes }})"></span> / {{ number_format($pendingGridTotalBytes / 1048576, 2) }} MB</span>
+                                                    @if($pendingTaskGrid->resumable_upload_uri)
+                                                        <span class="text-emerald-600 font-bold">lanjut otomatis aktif</span>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
                                 </div>
+                            @endif
+
+                            @if($failedTasksForSubmitterGrid->count() > 0)
+                                <div class="mb-4 p-3 rounded-2xl bg-red-50 border border-red-200">
+                                    <p class="text-xs font-bold text-red-700 mb-2">Upload Gagal</p>
+                                    <div class="space-y-2">
+                                        @foreach($failedTasksForSubmitterGrid as $failedTaskGrid)
+                                            <form action="{{ route('file-requests.upload-tasks.retry', [$fileRequest, $failedTaskGrid]) }}" method="POST" class="bg-white border border-red-100 rounded-xl px-3 py-2">
+                                                @csrf
+                                                <div class="flex items-start justify-between gap-3">
+                                                    <div class="min-w-0">
+                                                        <p class="text-xs font-bold text-slate-700 truncate">{{ $failedTaskGrid->original_filename }}</p>
+                                                        <p class="text-[11px] text-red-600">{{ \Illuminate\Support\Str::limit($failedTaskGrid->last_error ?: 'Gagal mengunggah file ke Google Drive', 70) }}</p>
+                                                    </div>
+                                                    <button type="submit" class="shrink-0 px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-bold hover:bg-red-500 transition-colors">
+                                                        Coba Lagi
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+
+                            <div class="flex-1">
+                                @include('file-requests.partials.file-list', ['files' => $files, 'compact' => true])
+                            </div>
+
+                            <div class="mt-4 pt-4 border-t border-slate-100 flex justify-end">
+                                <button @click="confirmDeleteSubmission('{{ route('file-requests.submissions.destroy', $fileRequest) }}', '{{ $submitter }}')"
+                                    class="flex items-center gap-2 text-red-400 hover:text-red-600 font-bold text-xs transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    Hapus Folder Siswa
+                                </button>
+                            </div>
                         </div>
                     @endforeach
                 </div>

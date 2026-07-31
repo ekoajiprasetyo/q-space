@@ -38,6 +38,7 @@ class PublicQueueRunnerController extends Controller
             }
 
             $this->cleanupStalePendingUploads();
+            $this->cleanupStaleChunkUploads();
 
             return response()->json([
                 'ok' => true,
@@ -68,6 +69,19 @@ class PublicQueueRunnerController extends Controller
             // Keep failed file for manual retry. Delete only very old failed leftovers.
             if ($task->status === 'failed' && $disk->lastModified($path) < now()->subDays(7)->timestamp) {
                 $disk->delete($path);
+            }
+        }
+    }
+
+    protected function cleanupStaleChunkUploads(): void
+    {
+        $disk = Storage::disk('local');
+
+        foreach ($disk->directories('chunked-uploads') as $requestDirectory) {
+            foreach ($disk->directories($requestDirectory) as $batchDirectory) {
+                if ($disk->lastModified($batchDirectory) < now()->subHours(12)->timestamp) {
+                    $disk->deleteDirectory($batchDirectory);
+                }
             }
         }
     }

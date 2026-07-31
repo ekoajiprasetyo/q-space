@@ -39,7 +39,7 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect' => env('GOOGLE_REDIRECT_URI'),
-        'upload_chunk_size' => (int) env('GOOGLE_DRIVE_UPLOAD_CHUNK_SIZE', 8388608),
+        'upload_chunk_size' => (int) env('GOOGLE_DRIVE_UPLOAD_CHUNK_SIZE', 2097152),
         'request_timeout' => (int) env('GOOGLE_DRIVE_REQUEST_TIMEOUT', 900),
         'connect_timeout' => (int) env('GOOGLE_DRIVE_CONNECT_TIMEOUT', 30),
     ],

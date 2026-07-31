@@ -17,11 +17,11 @@ class User extends Authenticatable
     {
         $table = parent::getTable();
 
-        if (!PostgresSchema::usesPgsql()) {
+        if (! PostgresSchema::usesPgsql()) {
             return $table;
         }
 
-        return PostgresSchema::qualify(PostgresSchema::app(), $table);
+        return PostgresSchema::qualify(PostgresSchema::core(), $table);
     }
 
     /**

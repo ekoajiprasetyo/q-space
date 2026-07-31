@@ -119,6 +119,32 @@
                             <x-input-error :messages="$errors->get('max_files')" class="mt-2" />
                         </div>
 
+                        <div class="group">
+                            <label for="max_file_size" class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 group-focus-within:text-blue-600 transition-colors">Ukuran Maksimal Per File</label>
+                            <label for="max_file_size" class="flex items-center gap-4 p-4 rounded-3xl border border-slate-200 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all group-focus-within:border-blue-500 group-focus-within:ring-4 group-focus-within:ring-blue-500/10">
+                                <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 1.343-3 3v1H8a2 2 0 00-2 2v1a2 2 0 002 2h8a2 2 0 002-2v-1a2 2 0 00-2-2h-1v-1c0-1.657-1.343-3-3-3z"></path></svg>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-3">
+                                        <input
+                                            id="max_file_size"
+                                            type="number"
+                                            name="max_file_size"
+                                            min="1"
+                                            max="1024"
+                                            value="{{ old('max_file_size', 10) }}"
+                                            required
+                                            class="block w-full border-0 bg-transparent p-0 text-slate-800 font-bold text-xl focus:ring-0"
+                                        />
+                                        <span class="text-sm font-bold text-slate-500 shrink-0">MB</span>
+                                    </div>
+                                    <p class="text-xs text-slate-400 mt-0.5">Batas ini diterapkan saat siswa mengunggah file.</p>
+                                </div>
+                            </label>
+                            <x-input-error :messages="$errors->get('max_file_size')" class="mt-2" />
+                        </div>
+
                         <!-- Custom Input: Date -->
                          <div class="group">
                             <label for="deadline" class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 group-focus-within:text-blue-600 transition-colors">Tenggat Waktu</label>

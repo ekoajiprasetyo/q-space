@@ -4,6 +4,8 @@ Tanggal audit: `2026-07-09`
 Workspace: `D:\xampp\htdocs\q-space`
 Status produksi: `clean cutover` aktif, tanpa import histori MySQL lama
 
+> Status lanjutan 2026-07-31: audit ini menjadi catatan historis. Implementasi shared identity native berada di `Q_SPACE_SHARED_IDENTITY_CUTOVER.md`; shadow identity telah dijadwalkan untuk dihapus melalui migration transactional.
+
 ## Tujuan
 
 Memetakan bagian aplikasi yang masih bergantung langsung pada shadow identity `q_space.users` agar refactor phase 2 bisa dilakukan bertahap tanpa mengganggu produksi.

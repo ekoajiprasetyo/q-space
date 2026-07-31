@@ -34,22 +34,31 @@ Route::domain($shortLinkDomain)->group(function () {
 |
 */
 Route::domain($appDomain)->group(function () {
-    
+
     Route::get('/', function () {
+        $user = auth()->user();
+
+        if ($user
+            && in_array($user->role, ['guru', 'admin'], true)
+            && ($user->role === 'admin' || $user->is_active)) {
+            return redirect()->route('dashboard');
+        }
+
         return view('welcome');
     })->name('welcome');
 
     Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])
-        ->middleware(['auth', 'verified'])
+        ->middleware(['auth', 'verified', 'qspace.teacher'])
         ->name('dashboard');
 
-    Route::middleware('auth')->group(function () {
+    Route::middleware(['auth', 'qspace.teacher'])->group(function () {
         // Files (Q-Store)
         Route::get('/files', [\App\Http\Controllers\FileRequestController::class, 'index'])->name('files.index');
         Route::resource('file-requests', \App\Http\Controllers\FileRequestController::class)->only(['create', 'store', 'show', 'destroy']);
         Route::post('/file-requests/{fileRequest}/toggle', [\App\Http\Controllers\FileRequestController::class, 'toggleStatus'])->name('file-requests.toggle');
         Route::delete('/file-requests/{fileRequest}/submissions', [\App\Http\Controllers\FileRequestController::class, 'destroySubmission'])->name('file-requests.submissions.destroy');
         Route::post('/file-requests/{fileRequest}/upload-tasks/{uploadTask}/retry', [\App\Http\Controllers\FileRequestController::class, 'retryUploadTask'])->name('file-requests.upload-tasks.retry');
+        Route::get('/file-requests/{fileRequest}/upload-status', [\App\Http\Controllers\FileRequestController::class, 'uploadStatus'])->name('file-requests.upload-status');
 
         // Paths (Short Links Management)
         Route::resource('paths', \App\Http\Controllers\ShortLinkController::class)->only(['index', 'store', 'destroy', 'update']);
@@ -63,14 +72,21 @@ Route::domain($appDomain)->group(function () {
         // Crews (Group Generator)
         Route::get('/crews', [\App\Http\Controllers\CrewsController::class, 'index'])->name('crews.index');
 
-    });
+        // Google OAuth in Q-Space is only for linking a teacher's Drive.
+        // Account registration and authentication remain centralized in Q-Link.
+        Route::get('/auth/google/redirect', [\App\Http\Controllers\Auth\GoogleAuthController::class, 'redirect'])->name('auth.google.redirect');
+        Route::get('/auth/google/callback', [\App\Http\Controllers\Auth\GoogleAuthController::class, 'callback'])->name('auth.google.callback');
 
-    Route::get('/auth/google/redirect', [\App\Http\Controllers\Auth\GoogleAuthController::class, 'redirect'])->name('auth.google.redirect');
-    Route::get('/auth/google/callback', [\App\Http\Controllers\Auth\GoogleAuthController::class, 'callback'])->name('auth.google.callback');
+    });
 
     // Public Upload Link
     Route::get('/upload/{slug}', [\App\Http\Controllers\FileRequestController::class, 'publicUpload'])->name('file-requests.upload');
     Route::post('/upload/{slug}', [\App\Http\Controllers\FileRequestController::class, 'storePublicUpload'])->name('file-requests.upload.store');
+    Route::post('/upload/{slug}/chunk-batches', [\App\Http\Controllers\FileRequestController::class, 'createChunkBatch'])->name('file-requests.upload.chunk-batches.store');
+    Route::post('/upload/{slug}/chunk-files', [\App\Http\Controllers\FileRequestController::class, 'createChunkFileUpload'])->name('file-requests.upload.chunk-files.store');
+    Route::post('/upload/{slug}/chunk-files/{uploadId}/chunks', [\App\Http\Controllers\FileRequestController::class, 'storeChunk'])->name('file-requests.upload.chunk-files.chunks.store');
+    Route::post('/upload/{slug}/chunk-files/{uploadId}/complete', [\App\Http\Controllers\FileRequestController::class, 'completeChunkFileUpload'])->name('file-requests.upload.chunk-files.complete');
+    Route::post('/upload/{slug}/chunk-batches/{batchId}/finish', [\App\Http\Controllers\FileRequestController::class, 'finishChunkBatch'])->name('file-requests.upload.chunk-batches.finish');
     Route::get('/queue/trigger', [\App\Http\Controllers\PublicQueueRunnerController::class, 'trigger'])
         ->middleware(['signed', 'throttle:30,1'])
         ->name('queue.trigger');

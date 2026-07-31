@@ -16,7 +16,7 @@ class CoreStudent extends Model
     {
         $table = $this->table;
 
-        if (!PostgresSchema::usesPgsql()) {
+        if (! PostgresSchema::usesPgsql()) {
             return $table;
         }
 
@@ -25,6 +25,6 @@ class CoreStudent extends Model
 
     public function user(): BelongsTo
     {
-        return $this->belongsTo(CoreUser::class, 'user_id');
+        return $this->belongsTo(User::class, 'user_id');
     }
 }

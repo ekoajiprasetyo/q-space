@@ -127,7 +127,6 @@ return [
 
     'auth_bridge' => [
         'allow_local_registration' => env('AUTH_ALLOW_LOCAL_REGISTRATION', true),
-        'allow_google_user_autocreate' => env('AUTH_ALLOW_GOOGLE_USER_AUTOCREATE', true),
         'allow_local_identity_mutation' => env('AUTH_ALLOW_LOCAL_IDENTITY_MUTATION', true),
     ],
 
