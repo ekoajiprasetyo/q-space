@@ -14,9 +14,10 @@ class QrTextController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'title' => 'nullable|string|max:255',
+            'title' => 'required|string|max:255',
             'content' => 'required|string',
             'theme' => 'nullable|string|in:default,dark,elegant,colorful',
+            'qr_options' => 'nullable|array',
         ]);
 
         $qrText = QrText::create([
@@ -24,11 +25,12 @@ class QrTextController extends Controller
             'title' => $request->title,
             'content' => $request->content,
             'theme' => $request->theme ?? 'default',
+            'qr_options' => $request->qr_options,
         ]);
 
         return response()->json([
             'success' => true,
-            'url' => route('qr-text.show', $qrText->slug),
+            'url' => $qrText->url,
             'slug' => $qrText->slug,
         ]);
     }
@@ -62,5 +64,20 @@ class QrTextController extends Controller
         $qrText->delete();
 
         return back()->with('success', 'QR Code berhasil dihapus.');
+    }
+
+    public function update(Request $request, QrText $qrText)
+    {
+        abort_unless($qrText->ownerMatches((int) Auth::id()), 403);
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'content' => 'required|string',
+            'theme' => 'required|string|in:default,dark,elegant,colorful',
+        ]);
+
+        $qrText->update($validated);
+
+        return back()->with('success', 'Konten QR Teks berhasil diperbarui. QR dan short link tetap sama.');
     }
 }

@@ -19,6 +19,9 @@ Route::domain($shortLinkDomain)->group(function () {
         abort(404);
     });
 
+    // QR Text links use the same short-link domain as Dynamic QR codes.
+    Route::get('/t/{slug}', [\App\Http\Controllers\QrTextController::class, 'show'])->name('qr-text.show');
+
     // Catch-all for short codes
     Route::get('/{code}', [\App\Http\Controllers\ShortLinkController::class, 'redirect'])->name('short_link.redirect');
 });
@@ -66,7 +69,12 @@ Route::domain($appDomain)->group(function () {
         // Codes (QR Generator)
         Route::get('/codes', [\App\Http\Controllers\QrCodeController::class, 'index'])->name('codes.index');
         Route::post('/codes/dynamic', [\App\Http\Controllers\QrCodeController::class, 'storeDynamic'])->name('codes.dynamic');
+        Route::patch('/codes/dynamic/{dynamicQr}', [\App\Http\Controllers\QrCodeController::class, 'updateDynamic'])->name('codes.dynamic.update');
+        Route::delete('/codes/dynamic/{dynamicQr}', [\App\Http\Controllers\QrCodeController::class, 'destroyDynamic'])->name('codes.dynamic.destroy');
+        Route::post('/codes/static', [\App\Http\Controllers\QrCodeController::class, 'storeStatic'])->name('codes.static');
+        Route::delete('/codes/static/{staticQrCode}', [\App\Http\Controllers\QrCodeController::class, 'destroyStatic'])->name('codes.static.destroy');
         Route::post('/codes/text', [\App\Http\Controllers\QrTextController::class, 'store'])->name('qr-text.store');
+        Route::patch('/codes/text/{qrText}', [\App\Http\Controllers\QrTextController::class, 'update'])->name('qr-text.update');
         Route::delete('/codes/text/{qrText}', [\App\Http\Controllers\QrTextController::class, 'destroy'])->name('qr-text.destroy');
 
         // Crews (Group Generator)
@@ -92,7 +100,7 @@ Route::domain($appDomain)->group(function () {
         ->name('queue.trigger');
 
     // QR Text View (Public)
-    Route::get('/t/{slug}', [\App\Http\Controllers\QrTextController::class, 'show'])->name('qr-text.show');
+    Route::get('/t/{slug}', [\App\Http\Controllers\QrTextController::class, 'show'])->name('qr-text.show.legacy');
 
     require __DIR__.'/auth.php';
 });

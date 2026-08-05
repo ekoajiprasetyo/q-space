@@ -48,7 +48,43 @@
         }
     </style>
 
-    <div x-data="{ deleteModalOpen: false, deleteUrl: '' }" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20 relative isolate">
+    <div x-data="{
+        deleteModalOpen: false,
+        deleteUrl: '',
+        editModalOpen: false,
+        editUrl: '',
+        editName: '',
+        editTargetUrl: '',
+        editShortUrl: '',
+        editTextModalOpen: false,
+        editTextUrl: '',
+        editTextName: '',
+        editTextContent: '',
+        editTextTheme: 'default',
+        openDynamicEdit(item) {
+            this.editUrl = item.url;
+            this.editName = item.name;
+            this.editTargetUrl = item.targetUrl;
+            this.editShortUrl = item.shortUrl;
+            this.editModalOpen = true;
+        },
+        openTextEdit(item) {
+            this.editTextUrl = item.url;
+            this.editTextName = item.name;
+            this.editTextContent = item.content;
+            this.editTextTheme = item.theme;
+            this.editTextModalOpen = true;
+            this.$nextTick(() => {
+                if (!window.textEditQuill) {
+                    window.textEditQuill = new Quill('#text-edit-editor', {
+                        theme: 'snow',
+                        modules: { toolbar: [['bold', 'italic', 'underline'], [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['link'], ['clean']] }
+                    });
+                }
+                window.textEditQuill.root.innerHTML = item.content;
+            });
+        }
+    }" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20 relative isolate">
         
         <!-- Background Decoration -->
         <div class="absolute -top-20 -left-20 w-[500px] h-[500px] bg-blue-200/60 rounded-full blur-[80px] -z-10 pointer-events-none mix-blend-multiply"></div>
@@ -68,7 +104,7 @@
                 
                 <div class="inline-flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur-md rounded-full shadow-sm border border-white/50 text-sm font-bold text-slate-600">
                     <div class="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></div>
-                    {{ $dynamicQrs->count() + $textQrs->count() }} QR Code Dibuat
+                    {{ $dynamicQrs->count() + $textQrs->count() + $staticQrs->count() }} QR Code Dibuat
                 </div>
             </div>
 
@@ -113,6 +149,14 @@
                                     <button type="button" id="mode-dynamic" class="px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-700 transition-all">Dinamis</button>
                                 </div>
 
+                                <div id="static-name-section">
+                                    <label for="static-qr-name" class="block text-sm font-bold text-slate-700 mb-2 ml-1">Nama QR Code</label>
+                                    <input type="text" id="static-qr-name" maxlength="255" required
+                                        class="block w-full px-4 py-3 bg-slate-50 border-transparent rounded-2xl text-slate-900 placeholder-slate-400 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/10 transition-all font-medium"
+                                        placeholder="Contoh: Absensi Kelas 7A">
+                                    <p class="text-xs text-slate-500 mt-2 ml-1 font-medium">Nama ini akan tampil di Riwayat QR Code.</p>
+                                </div>
+
                                 <div>
                                     <label class="block text-sm font-bold text-slate-700 mb-2 ml-1">URL / Link</label>
                                     <div class="relative">
@@ -123,15 +167,15 @@
                                 
                                 <button type="button" id="generate-dynamic-btn" class="hidden w-full flex justify-center items-center py-4 bg-gradient-to-r from-teal-500 to-emerald-600 rounded-2xl font-bold text-white shadow-lg shadow-teal-500/30 hover:shadow-teal-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
                                     <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
-                                    Generate Dynamic QR
+                                    Generate
                                 </button>
                             </div>
 
                             <!-- Rich Text Section (Hidden by default) -->
                             <div id="text-section" class="hidden space-y-4">
                                 <div>
-                                    <label class="block text-sm font-bold text-slate-700 mb-2 ml-1">Judul (Opsional)</label>
-                                    <input type="text" id="text-title" class="block w-full px-4 py-3 bg-slate-50 border-transparent rounded-2xl text-slate-900 placeholder-slate-400 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/10 transition-all font-medium" placeholder="Judul konten...">
+                                    <label class="block text-sm font-bold text-slate-700 mb-2 ml-1">Nama QR Code</label>
+                                    <input type="text" id="text-title" required class="block w-full px-4 py-3 bg-slate-50 border-transparent rounded-2xl text-slate-900 placeholder-slate-400 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/10 transition-all font-medium" placeholder="Contoh: Informasi Kegiatan Sekolah">
                                 </div>
                                 
                                 <div>
@@ -151,7 +195,7 @@
 
                                 <button type="button" id="generate-text-qr" class="w-full flex justify-center items-center py-4 bg-gradient-to-r from-teal-500 to-emerald-600 rounded-2xl font-bold text-white shadow-lg shadow-teal-500/30 hover:shadow-teal-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
                                     <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                                    Generate QR Code
+                                    Generate
                                 </button>
                                 
                                 <div id="text-qr-status" class="hidden">
@@ -232,6 +276,47 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="pt-2 border-t border-slate-100">
+                                <h4 class="text-sm font-black text-slate-400 uppercase tracking-wider mb-4">Frame</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div class="space-y-5">
+                                        <label for="qr-frame-style" class="block text-sm font-bold text-slate-700 mb-2 ml-1">Gaya Frame</label>
+                                        <select id="qr-frame-style" class="block w-full px-4 py-3 bg-slate-50 border-transparent rounded-2xl text-slate-900 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/10 transition-all font-bold cursor-pointer">
+                                            <option value="none" selected>Tanpa Frame</option>
+                                            <option value="bottom_label">Label Bawah</option>
+                                            <option value="top_label">Label Atas</option>
+                                            <option value="border_label">Bingkai & Label</option>
+                                        </select>
+                                        <div id="qr-frame-color-section" class="hidden">
+                                            <label for="qr-frame-color" class="block text-sm font-bold text-slate-700 mb-2 ml-1">Warna Frame</label>
+                                            <div class="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+                                                <div class="relative w-10 h-10 flex-shrink-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-slate-200">
+                                                    <input type="color" id="qr-frame-color" value="#0f172a" class="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] p-0 border-0 cursor-pointer">
+                                                </div>
+                                                <input type="text" id="qr-frame-color-text" value="#0f172a" class="flex-1 bg-transparent border-none text-slate-600 font-mono text-xs focus:ring-0 uppercase" readonly>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="qr-frame-settings-section" class="hidden space-y-5">
+                                        <div>
+                                            <label for="qr-frame-text" class="block text-sm font-bold text-slate-700 mb-2 ml-1">Teks Frame</label>
+                                            <input type="text" id="qr-frame-text" maxlength="80" value="SCAN ME"
+                                                class="block w-full px-4 py-3 bg-slate-50 border-transparent rounded-2xl text-slate-900 placeholder-slate-400 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/10 transition-all font-medium"
+                                                placeholder="Contoh: SCAN UNTUK INFO">
+                                        </div>
+                                        <div>
+                                            <label for="qr-frame-text-color" class="block text-sm font-bold text-slate-700 mb-2 ml-1">Warna Teks Frame</label>
+                                            <div class="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+                                                <div class="relative w-10 h-10 flex-shrink-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-slate-200">
+                                                    <input type="color" id="qr-frame-text-color" value="#ffffff" class="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] p-0 border-0 cursor-pointer">
+                                                </div>
+                                                <input type="text" id="qr-frame-text-color-text" value="#ffffff" class="flex-1 bg-transparent border-none text-slate-600 font-mono text-xs focus:ring-0 uppercase" readonly>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -245,7 +330,11 @@
                             
                             <!-- Canvas Container -->
                             <div class="bg-white rounded-[2rem] border border-slate-100 shadow-sm mb-8 w-full p-8">
-                                <div id="qr-canvas"></div>
+                                <div id="qr-frame-preview" data-frame="none">
+                                    <div id="qr-frame-text-top" class="qr-frame-label hidden"></div>
+                                    <div id="qr-canvas"></div>
+                                    <div id="qr-frame-text-bottom" class="qr-frame-label hidden"></div>
+                                </div>
                             </div>
                             <style>
                                 #qr-canvas {
@@ -260,6 +349,14 @@
                                     max-width: 100%;
                                     display: block;
                                 }
+                                #qr-frame-preview[data-frame="bottom_label"] #qr-canvas,
+                                #qr-frame-preview[data-frame="top_label"] #qr-canvas,
+                                #qr-frame-preview[data-frame="border_label"] #qr-canvas { padding: 0.5rem; }
+                                #qr-frame-preview[data-frame="border_label"] #qr-canvas { border: 3px solid var(--frame-color, #0f172a); border-radius: 1rem; }
+                                .qr-frame-label { text-align: center; font-weight: 900; letter-spacing: .12em; font-size: .72rem; }
+                                #qr-frame-preview[data-frame="bottom_label"] #qr-frame-text-bottom { display: block; margin-top: .5rem; padding: .55rem .75rem; border-radius: .7rem; background: var(--frame-color, #0f172a); color: var(--frame-text-color, #fff); }
+                                #qr-frame-preview[data-frame="top_label"] #qr-frame-text-top { display: block; margin-bottom: .5rem; padding: .55rem .75rem; border-radius: .7rem; background: var(--frame-color, #0f172a); color: var(--frame-text-color, #fff); }
+                                #qr-frame-preview[data-frame="border_label"] #qr-frame-text-bottom { display: block; margin-top: .55rem; color: var(--frame-text-color, #0f172a); }
                             </style>
 
                             <div class="w-full space-y-4">
@@ -274,7 +371,7 @@
                                 </div>
 
                                 <button id="download-btn" class="w-full flex justify-center items-center py-4 bg-slate-900 rounded-full font-bold text-white shadow-lg shadow-slate-900/30 hover:scale-[1.02] hover:shadow-slate-900/40 active:scale-[0.98] transition-all duration-300 group">
-                                    <span class="mr-2">Download PNG</span>
+                                    <span class="mr-2">Simpan & Download</span>
                                     <svg class="w-5 h-5 group-hover:translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                                 </button>
                             </div>
@@ -283,19 +380,40 @@
 
                     <!-- History Table (Simplified) -->
                     @php
-                        $history = $dynamicQrs->map(function($item) {
-                            $item->type_label = 'Dynamic';
-                            $item->qr_content = 'https://s.q-link.my.id/' . $item->short_code; 
+                        $history = $staticQrs->map(function($item) {
+                            $item->type_label = 'Static';
+                            $item->qr_content = $item->content;
+                            $item->qr_options = $item->options;
                             $item->display_name = $item->name;
-                            $item->delete_route = route('paths.destroy', $item->id);
+                            $item->delete_route = route('codes.static.destroy', $item->id);
+                            return $item;
+                        })->concat($dynamicQrs->map(function($item) {
+                            $item->type_label = 'Dynamic';
+                            $item->qr_content = 'https://' . config('app.shortlink_domain') . '/' . $item->short_code;
+                            $item->qr_options = $item->qr_options ?? null;
+                            $item->display_name = $item->name;
+                            $item->delete_route = route('codes.dynamic.destroy', $item->id);
+                            $item->edit_payload = [
+                                'url' => route('codes.dynamic.update', $item->id),
+                                'name' => $item->name,
+                                'targetUrl' => $item->original_url,
+                                'shortUrl' => $item->qr_content,
+                            ];
                             return $item;
                         })->concat($textQrs->map(function($item) {
                             $item->type_label = 'Text';
-                            $item->qr_content = $item->content;
+                            $item->qr_content = $item->url;
+                            $item->qr_options = $item->qr_options ?? null;
                             $item->display_name = $item->title ?? Str::limit($item->content, 20);
                             $item->delete_route = route('qr-text.destroy', $item->id);
+                            $item->edit_payload = [
+                                'url' => route('qr-text.update', $item->id),
+                                'name' => $item->title ?? 'QR Teks',
+                                'content' => $item->content,
+                                'theme' => $item->theme,
+                            ];
                             return $item;
-                        }))->sortByDesc('created_at')->values();
+                        })))->sortByDesc('created_at')->values();
                     @endphp
 
                     <div class="bg-white/80 backdrop-blur-xl rounded-[2.5rem] border border-white/50 shadow-sm overflow-hidden"
@@ -340,7 +458,7 @@
                                             <tr x-show="isVisible({{ $index }})" class="group hover:bg-slate-50/50 transition-colors">
                                                 <td class="px-5 py-3">
                                                     <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold {{ $item->type_label === 'Dynamic' ? 'bg-teal-50 text-teal-600' : 'bg-slate-100 text-slate-600' }}">
-                                                        {{ $item->type_label === 'Dynamic' ? 'LNK' : 'TXT' }}
+                                                        {{ $item->type_label === 'Static' ? 'STC' : ($item->type_label === 'Dynamic' ? 'LNK' : 'TXT') }}
                                                     </span>
                                                 </td>
                                                 <td class="px-3 py-3">
@@ -349,7 +467,7 @@
                                                 <td class="px-5 py-3 text-left">
                                                     <div class="flex items-center justify-start gap-1">
                                                         <button type="button" 
-                                                            onclick="downloadHistoryQR('{{ $item->qr_content }}', '{{ Str::slug($item->display_name) }}')"
+                                                            onclick="downloadHistoryQR({{ \Illuminate\Support\Js::from(['content' => $item->qr_content, 'filename' => Str::slug($item->display_name), 'options' => $item->qr_options]) }})"
                                                             class="w-8 h-8 rounded-full text-slate-400 hover:bg-slate-800 hover:text-white flex items-center justify-center transition-all" 
                                                             title="Download">
                                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -360,6 +478,22 @@
                                                             title="Hapus">
                                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                                         </button>
+                                                        @if($item->type_label === 'Dynamic')
+                                                        <button type="button"
+                                                            @click="openDynamicEdit({{ \Illuminate\Support\Js::from($item->edit_payload) }})"
+                                                            class="w-8 h-8 rounded-full text-blue-400 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition-all"
+                                                            title="Edit tujuan QR Dinamis">
+                                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                        </button>
+                                                        @endif
+                                                        @if($item->type_label === 'Text')
+                                                        <button type="button"
+                                                            @click="openTextEdit({{ \Illuminate\Support\Js::from($item->edit_payload) }})"
+                                                            class="w-8 h-8 rounded-full text-blue-400 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition-all"
+                                                            title="Edit konten QR Teks">
+                                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                        </button>
+                                                        @endif
                                                     </div>
                                                 </td>
                                             </tr>
@@ -390,6 +524,93 @@
             </div>
 
             <!-- History removed from here -->
+
+            <!-- Text QR Edit Modal -->
+            <template x-teleport="body">
+                <div x-show="editTextModalOpen" class="relative z-[999]" style="display: none;">
+                    <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" @click="editTextModalOpen = false"></div>
+                    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+                        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                            <div x-show="editTextModalOpen" @click.away="editTextModalOpen = false"
+                                class="relative w-full max-w-2xl transform overflow-hidden rounded-[2rem] bg-white text-left shadow-2xl transition-all">
+                                <form :action="editTextUrl" method="POST" class="p-6 sm:p-8 space-y-5"
+                                    @submit="editTextContent = window.textEditQuill.root.innerHTML">
+                                    @csrf
+                                    @method('PATCH')
+                                    <input type="hidden" name="content" x-model="editTextContent">
+                                    <div>
+                                        <h3 class="text-xl font-bold text-slate-900">Edit QR Teks</h3>
+                                        <p class="mt-1 text-sm text-slate-500">Perubahan konten langsung berlaku, sementara QR dan short link tetap sama.</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-bold text-slate-700 mb-2">Nama QR Code</label>
+                                        <input type="text" name="title" x-model="editTextName" maxlength="255" required
+                                            class="block w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-900 focus:border-teal-500 focus:ring-teal-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-bold text-slate-700 mb-2">Konten</label>
+                                        <div id="text-edit-editor" class="rounded-2xl border border-slate-200 overflow-hidden bg-white"></div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-bold text-slate-700 mb-2">Tema Tampilan</label>
+                                        <select name="theme" x-model="editTextTheme" class="block w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 font-bold text-slate-900 focus:border-teal-500 focus:ring-teal-500">
+                                            <option value="default">Default (Light)</option>
+                                            <option value="dark">Dark Mode</option>
+                                            <option value="elegant">Elegant (Warm)</option>
+                                            <option value="colorful">Colorful (Gradient)</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                                        <button type="button" @click="editTextModalOpen = false" class="rounded-full px-5 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100">Batal</button>
+                                        <button type="submit" class="rounded-full bg-teal-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-teal-500/30 hover:bg-teal-500">Simpan Perubahan</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Dynamic QR Edit Modal -->
+            <template x-teleport="body">
+                <div x-show="editModalOpen" class="relative z-[999]" style="display: none;">
+                    <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" @click="editModalOpen = false"></div>
+                    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+                        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                            <div x-show="editModalOpen" @click.away="editModalOpen = false"
+                                class="relative w-full max-w-lg transform overflow-hidden rounded-[2rem] bg-white text-left shadow-2xl transition-all">
+                                <form :action="editUrl" method="POST" class="p-6 sm:p-8 space-y-5">
+                                    @csrf
+                                    @method('PATCH')
+                                    <div>
+                                        <h3 class="text-xl font-bold text-slate-900">Edit QR Dinamis</h3>
+                                        <p class="mt-1 text-sm text-slate-500">Ubah tujuan tanpa mengubah QR Code atau short link yang sudah dibagikan.</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-bold text-slate-700 mb-2">Nama QR Code</label>
+                                        <input type="text" name="name" x-model="editName" maxlength="255" required
+                                            class="block w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-900 focus:border-teal-500 focus:ring-teal-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-bold text-slate-700 mb-2">Short Link QR (tetap)</label>
+                                        <input type="text" :value="editShortUrl" readonly
+                                            class="block w-full rounded-2xl border-slate-200 bg-slate-100 px-4 py-3 font-mono text-sm text-slate-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-bold text-slate-700 mb-2">URL Tujuan Baru</label>
+                                        <input type="url" name="original_url" x-model="editTargetUrl" required
+                                            class="block w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-900 focus:border-teal-500 focus:ring-teal-500">
+                                    </div>
+                                    <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                                        <button type="button" @click="editModalOpen = false" class="rounded-full px-5 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100">Batal</button>
+                                        <button type="submit" class="rounded-full bg-teal-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-teal-500/30 hover:bg-teal-500">Simpan Perubahan</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
 
             <!-- Delete Modal -->
             <template x-teleport="body">
@@ -455,7 +676,7 @@
     <!-- Global Toast System is used instead (App.blade.php) -->
 
     <!-- QR Code Styling Library -->
-    <script type="text/javascript" src="https://unpkg.com/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/qr-code-styling@1.9.2/lib/qr-code-styling.js"></script>
     <!-- Quill.js -->
     <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
     
@@ -472,6 +693,17 @@
             const fileNameSpan = document.getElementById('file-name');
             const downloadBtn = document.getElementById('download-btn');
             const sizeInput = document.getElementById('qr-size');
+            const frameStyleInput = document.getElementById('qr-frame-style');
+            const frameTextInput = document.getElementById('qr-frame-text');
+            const frameColorInput = document.getElementById('qr-frame-color');
+            const frameColorText = document.getElementById('qr-frame-color-text');
+            const frameColorSection = document.getElementById('qr-frame-color-section');
+            const frameTextColorInput = document.getElementById('qr-frame-text-color');
+            const frameTextColorText = document.getElementById('qr-frame-text-color-text');
+            const frameSettingsSection = document.getElementById('qr-frame-settings-section');
+            const framePreview = document.getElementById('qr-frame-preview');
+            const frameTextTop = document.getElementById('qr-frame-text-top');
+            const frameTextBottom = document.getElementById('qr-frame-text-bottom');
             
             // Helper to use Global Toast System (from app.blade.php)
             function showToast(title, message, type = 'success') {
@@ -500,6 +732,8 @@
             const modeDynamicBtn = document.getElementById('mode-dynamic');
             const generateDynamicBtn = document.getElementById('generate-dynamic-btn');
             const dynamicHint = document.getElementById('dynamic-hint');
+            const staticNameSection = document.getElementById('static-name-section');
+            const staticQrNameInput = document.getElementById('static-qr-name');
             
             let currentType = 'url';
             let urlMode = 'static';
@@ -514,6 +748,7 @@
                 modeDynamicBtn.classList.add('text-slate-500');
                 dynamicHint.classList.add('hidden');
                 generateDynamicBtn.classList.add('hidden');
+                staticNameSection.classList.remove('hidden');
                 updateQR(); // Revert to static text immediately
             });
 
@@ -525,10 +760,19 @@
                 modeStaticBtn.classList.add('text-slate-500');
                 dynamicHint.classList.remove('hidden');
                 generateDynamicBtn.classList.remove('hidden');
+                staticNameSection.classList.remove('hidden');
             });
 
             generateDynamicBtn.addEventListener('click', async () => {
                 const url = textInput.value;
+                const name = staticQrNameInput.value.trim();
+
+                if (!name) {
+                    showToast('Nama diperlukan', 'Masukkan nama QR Code sebelum membuat QR Dinamis.', 'error');
+                    staticQrNameInput.focus();
+                    return;
+                }
+
                 if (!url.startsWith('http')) {
                     alert('Harap masukkan URL yang valid (dimulai dengan http/https)');
                     return;
@@ -545,7 +789,7 @@
                             'X-CSRF-TOKEN': '{{ csrf_token() }}',
                             'Accept': 'application/json'
                         },
-                        body: JSON.stringify({ url })
+                        body: JSON.stringify({ name, url, qr_options: getQrStyleOptions() })
                     });
                     
                     const data = await response.json();
@@ -553,7 +797,7 @@
                     if (data.success) {
                         dynamicUrl = data.short_url;
                         updateQR(); 
-                        showToast('Berhasil!', 'Link QR Dinamis telah dibuat dan disimpan di menu Paths.');
+                        showToast('Berhasil!', 'QR Dinamis telah dibuat dan tersimpan di Riwayat.');
                     } else {
                         showToast('Gagal', 'Gagal membuat dynamic link.', 'error');
                     }
@@ -562,7 +806,7 @@
                     showToast('Error', 'Terjadi kesalahan koneksi.', 'error');
                 } finally {
                     generateDynamicBtn.disabled = false;
-                    generateDynamicBtn.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg> Generate Dynamic QR';
+                generateDynamicBtn.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg> Generate';
                 }
             });
             
@@ -606,9 +850,15 @@
             // Generate Text QR Code
             generateTextQrBtn.addEventListener('click', async () => {
                 const content = quill.root.innerHTML;
-                const title = textTitleInput.value;
+                const title = textTitleInput.value.trim();
                 const theme = textThemeSelect.value;
                 
+                if (!title) {
+                    showToast('Nama diperlukan', 'Masukkan nama QR Code sebelum membuat QR Teks.', 'error');
+                    textTitleInput.focus();
+                    return;
+                }
+
                 if (quill.getText().trim().length < 1) {
                     alert('Silakan masukkan konten teks terlebih dahulu.');
                     return;
@@ -625,7 +875,7 @@
                             'X-CSRF-TOKEN': '{{ csrf_token() }}',
                             'Accept': 'application/json'
                         },
-                        body: JSON.stringify({ title, content, theme })
+                        body: JSON.stringify({ title, content, theme, qr_options: getQrStyleOptions() })
                     });
                     
                     const data = await response.json();
@@ -647,7 +897,7 @@
                     alert('Terjadi kesalahan. Silakan coba lagi.');
                 } finally {
                     generateTextQrBtn.disabled = false;
-                    generateTextQrBtn.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> Generate QR Code';
+                generateTextQrBtn.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> Generate';
                 }
             });
 
@@ -749,6 +999,33 @@
                 fixSvgViewBox();
             };
 
+            const updateFramePreview = () => {
+                const frameStyle = frameStyleInput.value;
+                const frameText = frameTextInput.value.trim() || 'SCAN ME';
+                framePreview.dataset.frame = frameStyle;
+                framePreview.style.setProperty('--frame-color', frameColorInput.value);
+                framePreview.style.setProperty('--frame-text-color', frameTextColorInput.value);
+                frameTextTop.textContent = frameText;
+                frameTextBottom.textContent = frameText;
+                frameColorText.value = frameColorInput.value;
+                frameTextColorText.value = frameTextColorInput.value;
+                frameSettingsSection.classList.toggle('hidden', frameStyle === 'none');
+                frameColorSection.classList.toggle('hidden', frameStyle === 'none');
+            };
+
+            const getQrStyleOptions = () => ({
+                dots_type: dotsTypeInput.value,
+                corners_type: cornersTypeInput.value,
+                corners_dot_type: cornersTypeInput.value,
+                foreground_color: fgColorInput.value,
+                background_color: bgColorInput.value,
+                logo: logoUrl,
+                frame_style: frameStyleInput.value,
+                frame_text: frameTextInput.value.trim() || 'SCAN ME',
+                frame_color: frameColorInput.value,
+                frame_text_color: frameTextColorInput.value,
+            });
+
             // Event Listeners
             [textInput, fgColorInput, bgColorInput, dotsTypeInput, cornersTypeInput].forEach(el => {
                 el.addEventListener('input', () => {
@@ -793,8 +1070,39 @@
                 updateQR();
             });
 
-            // Download
-            downloadBtn.addEventListener('click', () => {
+            const buildQrOptions = (size) => ({
+                width: size,
+                height: size,
+                margin: Math.round(size * 0.03),
+                type: "svg",
+                image: logoUrl,
+                dotsOptions: {
+                    color: fgColorInput.value,
+                    type: dotsTypeInput.value
+                },
+                backgroundOptions: {
+                    color: bgColorInput.value,
+                },
+                cornersSquareOptions: {
+                    type: cornersTypeInput.value,
+                    color: fgColorInput.value
+                },
+                cornersDotOptions: {
+                    type: cornersTypeInput.value,
+                    color: fgColorInput.value
+                },
+                imageOptions: {
+                    crossOrigin: "anonymous",
+                    margin: 5
+                }
+            });
+
+            [frameStyleInput, frameTextInput, frameColorInput, frameTextColorInput].forEach(el => el.addEventListener('input', updateFramePreview));
+            updateFramePreview();
+
+            // A static QR is persisted once before its first download. Dynamic and text QR
+            // already have their own persistence flow when they are generated.
+            downloadBtn.addEventListener('click', async () => {
                 const size = parseInt(sizeInput.value);
                 
                 // Determine data
@@ -806,45 +1114,157 @@
                     data = dynamicUrl;
                 }
 
-                // Create temp instance for download
-                const downloadQr = new QRCodeStyling({
-                    width: size,
-                    height: size,
-                    margin: Math.round(size * 0.03), 
-                    type: "svg", 
-                    data: data,
-                    image: logoUrl,
-                    dotsOptions: {
-                        color: fgColorInput.value,
-                        type: dotsTypeInput.value
-                    },
-                    backgroundOptions: {
-                        color: bgColorInput.value,
-                    },
-                    cornersSquareOptions: {
-                        type: cornersTypeInput.value,
-                        color: fgColorInput.value
-                    },
-                    cornersDotOptions: {
-                        type: cornersTypeInput.value,
-                        color: fgColorInput.value
-                    },
-                    imageOptions: {
-                        crossOrigin: "anonymous",
-                        margin: 5
+                if (!data || !data.startsWith('http')) {
+                    showToast('URL diperlukan', 'Masukkan URL yang valid sebelum menyimpan QR.', 'error');
+                    return;
+                }
+
+                if (currentType === 'url' && urlMode === 'static') {
+                    const name = staticQrNameInput.value.trim();
+                    if (!name) {
+                        showToast('Nama diperlukan', 'Masukkan nama QR Code sebelum menyimpan.', 'error');
+                        staticQrNameInput.focus();
+                        return;
                     }
+
+                    const options = getQrStyleOptions();
+
+                    downloadBtn.disabled = true;
+                    try {
+                        const response = await fetch('{{ route("codes.static") }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ name, content: data, options })
+                        });
+                        const result = await response.json();
+
+                        if (!response.ok || !result.success) {
+                            throw new Error('QR statis tidak dapat disimpan.');
+                        }
+
+                        showToast('Tersimpan', result.created
+                            ? 'QR statis tersimpan di Riwayat dan sedang diunduh.'
+                            : 'QR yang sama sudah ada di Riwayat dan sedang diunduh.');
+                    } catch (error) {
+                        console.error('Error:', error);
+                        showToast('Gagal menyimpan', 'QR tidak diunduh karena belum berhasil disimpan.', 'error');
+                        return;
+                    } finally {
+                        downloadBtn.disabled = false;
+                    }
+                }
+
+                const downloadQr = new QRCodeStyling({
+                    ...buildQrOptions(size),
+                    data: data,
                 });
 
-                downloadQr.download({ 
-                    name: "q-studio-" + Date.now(), 
-                    extension: "png" 
-                });
+                await window.downloadQrPng(downloadQr, "q-studio-" + Date.now(), size, getQrStyleOptions());
             });
         });
     </script>
     <script>
+        // Rasterize the already-clean SVG drawing instead of asking the library to redraw it
+        // on Canvas. This avoids the line artifacts produced by older Canvas dot rendering.
+        window.escapeQrFrameText = (value) => String(value || '').replace(/[&<>"']/g, (character) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'
+        })[character]);
+
+        window.composeQrFrameSvg = (sourceSvg, size, options = {}) => {
+            const frameStyle = options.frame_style || 'none';
+            if (frameStyle === 'none') return sourceSvg;
+
+            const innerSvg = sourceSvg
+                .replace(/<svg[^>]*>/i, '')
+                .replace(/<\/svg>\s*$/i, '');
+            const label = window.escapeQrFrameText(options.frame_text || 'SCAN ME');
+            const foreground = options.frame_color || options.foreground_color || '#0f172a';
+            const textColor = options.frame_text_color || '#ffffff';
+            const padding = Math.round(size * 0.08);
+            const labelHeight = Math.round(size * 0.105);
+            const gap = Math.round(size * 0.02);
+            let qrSize = size - (padding * 2);
+            let qrY = padding;
+            let decoration = '';
+
+            if (frameStyle === 'top_label') {
+                qrSize -= labelHeight + gap;
+                qrY = padding + labelHeight + gap;
+                decoration = `<rect x="${(size - qrSize) / 2}" y="${padding}" width="${qrSize}" height="${labelHeight}" rx="${Math.round(labelHeight / 2)}" fill="${foreground}" />
+                    <text x="${size / 2}" y="${padding + (labelHeight / 2) + Math.round(size * 0.014)}" text-anchor="middle" fill="${textColor}" font-family="Arial, sans-serif" font-size="${Math.round(size * 0.042)}" font-weight="700" letter-spacing="1">${label}</text>`;
+            } else if (frameStyle === 'border_label') {
+                qrSize -= labelHeight + (gap * 2);
+                qrY = padding;
+                decoration = `<rect x="${Math.round(padding / 2)}" y="${Math.round(padding / 2)}" width="${size - padding}" height="${size - padding}" rx="${Math.round(size * 0.035)}" fill="none" stroke="${foreground}" stroke-width="${Math.max(8, Math.round(size * 0.011))}" />
+                    <text x="${size / 2}" y="${size - Math.round(size * 0.035)}" text-anchor="middle" fill="${textColor}" font-family="Arial, sans-serif" font-size="${Math.round(size * 0.042)}" font-weight="700" letter-spacing="1">${label}</text>`;
+            } else {
+                qrSize -= labelHeight + (gap * 2);
+                decoration = `<rect x="${(size - qrSize) / 2}" y="${size - padding - labelHeight}" width="${qrSize}" height="${labelHeight}" rx="${Math.round(labelHeight / 2)}" fill="${foreground}" />
+                    <text x="${size / 2}" y="${size - padding - (labelHeight / 2) + Math.round(size * 0.014)}" text-anchor="middle" fill="${textColor}" font-family="Arial, sans-serif" font-size="${Math.round(size * 0.042)}" font-weight="700" letter-spacing="1">${label}</text>`;
+            }
+
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+                <rect width="${size}" height="${size}" fill="${options.background_color || '#ffffff'}" />
+                <svg x="${(size - qrSize) / 2}" y="${qrY}" width="${qrSize}" height="${qrSize}" viewBox="0 0 ${size} ${size}">${innerSvg}</svg>
+                ${decoration}
+            </svg>`;
+        };
+
+        window.downloadQrPng = async (qrCode, filename, size, frameOptions = {}) => {
+            const svgBlob = await qrCode.getRawData('svg');
+            const sourceSvg = await svgBlob.text();
+            const framedSvg = window.composeQrFrameSvg(sourceSvg, size, frameOptions);
+            const svgUrl = URL.createObjectURL(new Blob([framedSvg], { type: 'image/svg+xml;charset=utf-8' }));
+
+            try {
+                const image = await new Promise((resolve, reject) => {
+                    const svgImage = new Image();
+                    svgImage.onload = () => resolve(svgImage);
+                    svgImage.onerror = () => reject(new Error('QR SVG tidak dapat dirender menjadi PNG.'));
+                    svgImage.src = svgUrl;
+                });
+
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const context = canvas.getContext('2d');
+                context.drawImage(image, 0, 0, size, size);
+
+                const pngBlob = await new Promise((resolve, reject) => {
+                    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('PNG tidak dapat dibuat.')), 'image/png');
+                });
+                const downloadUrl = URL.createObjectURL(pngBlob);
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = `${filename}.png`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(downloadUrl);
+            } finally {
+                URL.revokeObjectURL(svgUrl);
+            }
+        };
+
         // Global function for History Download
-        window.downloadHistoryQR = (content, filename) => {
+        window.downloadHistoryQR = async ({ content, filename, options = null }) => {
+            const savedOptions = options || {
+                dots_type: 'dots',
+                corners_type: 'extra-rounded',
+                corners_dot_type: 'dot',
+                foreground_color: '#0f172a',
+                background_color: '#ffffff',
+                logo: '',
+                frame_style: 'none',
+                frame_text: 'SCAN ME',
+                frame_color: '#0f172a',
+                frame_text_color: '#ffffff',
+            };
+
             // Create a temporary instance for downloading
             const tempQr = new QRCodeStyling({
                 width: 1024, 
@@ -852,28 +1272,29 @@
                 margin: 40,
                 type: "svg", 
                 data: content,
-                image: "", // No logo for history download to keep it simple/safe
+                image: savedOptions.logo || "",
                 dotsOptions: {
-                    color: "#0f172a",
-                    type: "dots"
+                    color: savedOptions.foreground_color,
+                    type: savedOptions.dots_type
                 },
                 backgroundOptions: {
-                    color: "#ffffff",
+                    color: savedOptions.background_color,
                 },
                 cornersSquareOptions: {
-                    type: "extra-rounded",
-                    color: "#0f172a"
+                    type: savedOptions.corners_type,
+                    color: savedOptions.foreground_color
                 },
                 cornersDotOptions: {
-                    type: "dot",
-                    color: "#0f172a"
-                }
+                    type: savedOptions.corners_dot_type,
+                    color: savedOptions.foreground_color
+                },
+                imageOptions: {
+                    crossOrigin: "anonymous",
+                    margin: 5
+                },
             });
 
-            tempQr.download({ 
-                name: "q-space-" + (filename || "qr"), 
-                extension: "png" 
-            });
+            await window.downloadQrPng(tempQr, "q-space-" + (filename || "qr"), 1024, savedOptions);
             
             // Optional: Notify user
             // window.dispatchEvent(new CustomEvent('notify', { detail: { message: 'Mendownload QR Code...', type: 'success' } }));

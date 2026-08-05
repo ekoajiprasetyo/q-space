@@ -17,11 +17,13 @@ class QrText extends Model
         'theme',
         'views',
         'is_active',
+        'qr_options',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
-        'views' => 'integer',
+            'views' => 'integer',
+            'qr_options' => 'array',
     ];
 
     protected static function boot()
@@ -57,6 +59,6 @@ class QrText extends Model
 
     public function getUrlAttribute(): string
     {
-        return route('qr-text.show', $this->slug);
+        return sprintf('https://%s/t/%s', config('app.shortlink_domain'), $this->slug);
     }
 }

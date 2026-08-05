@@ -9,7 +9,8 @@ class ShortLinkController extends Controller
 {
     public function index()
     {
-        $query = ShortLink::ownedByIdentity((int) auth()->id());
+        $query = ShortLink::ownedByIdentity((int) auth()->id())
+            ->fromSource(ShortLink::SOURCE_PATH);
 
         if (request('search')) {
             $search = request('search');
@@ -42,6 +43,7 @@ class ShortLinkController extends Controller
             'name' => $request->name,
             'original_url' => $request->original_url,
             'short_code' => $request->short_code ?? \Illuminate\Support\Str::random(6),
+            'source' => ShortLink::SOURCE_PATH,
         ]);
 
         return redirect()->route('paths.index')->with('success', 'Path berhasil dibuat!');
@@ -52,6 +54,7 @@ class ShortLinkController extends Controller
         if (! $path->ownerMatches((int) auth()->id())) {
             abort(403);
         }
+        abort_unless($path->source === ShortLink::SOURCE_PATH, 404);
         $path->delete();
         return redirect()->route('paths.index')->with('success', 'Path berhasil dihapus.');
     }
@@ -71,6 +74,7 @@ class ShortLinkController extends Controller
         if (! $path->ownerMatches((int) auth()->id())) {
             abort(403);
         }
+        abort_unless($path->source === ShortLink::SOURCE_PATH, 404);
 
         $request->validate([
             'original_url' => 'required|url',

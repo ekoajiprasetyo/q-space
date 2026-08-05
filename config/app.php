@@ -54,6 +54,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'shortlink_domain' => env('SHORTLINK_DOMAIN', 's.q-link.my.id'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
