@@ -79,6 +79,7 @@ Route::domain($appDomain)->group(function () {
 
         // Crews (Group Generator)
         Route::get('/crews', [\App\Http\Controllers\CrewsController::class, 'index'])->name('crews.index');
+        Route::post('/crews/import-students', [\App\Http\Controllers\CrewsController::class, 'importStudents'])->name('crews.import-students');
 
         // Google OAuth in Q-Space is only for linking a teacher's Drive.
         // Account registration and authentication remain centralized in Q-Link.
